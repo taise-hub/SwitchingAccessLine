@@ -12,7 +12,7 @@ class MyController(app_manager.RyuApp):
 
     def __init__(self, *args, **kwargs):
         super(MyController, self).__init__(*args, **kwargs)
-        non_inference_flows = {} #リアルタイムで流れているFlowのオブジェクトを格納 {dpid:[]}
+        self.non_inference_flows = {} #リアルタイムで流れているFlowのオブジェクトを格納 {dpid:[]}
         
 
     # install the table-miss flow entry.
