@@ -56,7 +56,7 @@ class MyController(app_manager.RyuApp):
         ofproto = datapath.ofproto
         parser = datapath.ofproto_parser
         dpid = datapath.id
-        self.matc_to_port.setdefault(dpid, [])
+        self.matc_to_port.setdefault(dpid, {})
         self.non_inference_flows.setdefault(dpid, [])
         pkt = packet.Packet(msg.data)
         pkt_arp = pkt.get_protocol(arp.arp)
