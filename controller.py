@@ -75,7 +75,7 @@ class MyController(app_manager.RyuApp):
             
             actions = [parser.OFPActionOutput(out_port)]
             if out_port != ofproto.OFPP_FLOOD:
-                match = parser.OFPMatch(in_port=in_port, eth_dst=dst)
+                match = parser.OFPMatch(in_port=in_port, arp_tha=dst)
                 self.add_flow(datapath, 1, match, actions)
             out = parser.OFPPacketOut(datapath=datapath,
                                   buffer_id=ofproto.OFP_NO_BUFFER,
@@ -83,24 +83,26 @@ class MyController(app_manager.RyuApp):
                                   data=msg.data)
             datapath.send_msg(out)
             return        
+        self.logger.info("this is TCP packet???")
+        self.logger.info("packet info: %s",pkt)
 
-        self.non_inference_flows[dpid].append(pkt)
-        self.logger.info("add non_inference_flow: %s", self.non_inference_flows[dpid])
-        ipv4_pkt = pkt.get_protocol(ipv4.ipv4)
-        ipv4_src = ipv4_pkt.src
-        ipv4_dst = ipv4_pkt.dst
-        self.logger.info("packet in【%s】: %s to %s",dpid, ipv4_src, ipv4_dst)
-        match = parser.OFPMatch(ipv4_src=ipv4_src, ipv4_dst=ipv4_dst)
-        in_port = msg.match['in_port']
-        out_port = 3 # 最もセキュアな回線につながっているポート
-        actions = [parser.OFPActionOutput(out_port)]
-        self.add_flow(datapath, 1, match, actions)
-        out = parser.OFPPacketOut(datapath=datapath,
-                                  buffer_id=ofproto.OFP_NO_BUFFER,
-                                  in_port=in_port,
-                                  actions=actions,
-                                  data=msg.data)
-        datapath.send_msg(out)
+        # self.non_inference_flows[dpid].append(pkt)
+        # self.logger.info("add non_inference_flow: %s", self.non_inference_flows[dpid])
+        # ipv4_pkt = pkt.get_protocol(ipv4.ipv4)
+        # ipv4_src = ipv4_pkt.src
+        # ipv4_dst = ipv4_pkt.dst
+        # self.logger.info("packet in【%s】: %s to %s",dpid, ipv4_src, ipv4_dst)
+        # match = parser.OFPMatch(ipv4_src=ipv4_src, ipv4_dst=ipv4_dst)
+        # in_port = msg.match['in_port']
+        # out_port = 3 # 最もセキュアな回線につながっているポート
+        # actions = [parser.OFPActionOutput(out_port)]
+        # self.add_flow(datapath, 1, match, actions)
+        # out = parser.OFPPacketOut(datapath=datapath,
+        #                           buffer_id=ofproto.OFP_NO_BUFFER,
+        #                           in_port=in_port,
+        #                           actions=actions,
+        #                           data=msg.data)
+        # datapath.send_msg(out)
 
     @set_ev_cls(ofp_event.EventOFPPortStatsReply, MAIN_DISPATCHER)
     def port_stats_reply_handler(self, ev):
