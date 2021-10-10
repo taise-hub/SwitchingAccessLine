@@ -14,6 +14,7 @@ class MyController(app_manager.RyuApp):
 
     def __init__(self, *args, **kwargs):
         super(MyController, self).__init__(*args, **kwargs)
+        self.matc_to_port = {}
         self.non_inference_flows = {} #リアルタイムで流れているFlowのオブジェクトを格納 {dpid:[]}
         
 
@@ -55,23 +56,31 @@ class MyController(app_manager.RyuApp):
         ofproto = datapath.ofproto
         parser = datapath.ofproto_parser
         dpid = datapath.id
+        self.matc_to_port.setdefault(dpid, [])
         self.non_inference_flows.setdefault(dpid, [])
         pkt = packet.Packet(msg.data)
         pkt_arp = pkt.get_protocol(arp.arp)
         if pkt_arp:
             self.logger.info("this is ARP packet\n")
             self.logger.info("packet info: %s",pkt_arp)
-            eth_pkt = pkt.get_protocol(ethernet.ethernet)
             in_port = msg.match['in_port']
+            eth_pkt = pkt.get_protocol(ethernet.ethernet)
+            src = eth_pkt.src
             dst = eth_pkt.dst
-            actions = [parser.OFPActionOutput(dst)]
-            match = parser.OFPMatch(in_port=in_port, eth_dst=dst)
-            self.add_flow(datapath, 1, match, actions)
+            self.matc_to_port[dpid][src] = in_port
+            if dst in self.matc_to_port[dpid]:
+                out_port = self.matc_to_port[dpid][dst]
+            else:
+                out_port = ofproto.OFPP_FLOOD
+            
+            actions = [parser.OFPActionOutput(out_port)]
+            if out_port != ofproto.OFPP_FLOOD:
+                match = parser.OFPMatch(in_port=in_port, eth_dst=dst)
+                self.add_flow(datapath, 1, match, actions)
             out = parser.OFPPacketOut(datapath=datapath,
-                            buffer_id=ofproto.OFP_NO_BUFFER,
-                            in_port=in_port,
-                            actions=actions,
-                            data=msg.data)
+                                  buffer_id=ofproto.OFP_NO_BUFFER,
+                                  in_port=in_port, actions=actions,
+                                  data=msg.data)
             datapath.send_msg(out)
             return        
 
