@@ -6,6 +6,7 @@ from ryu.ofproto import ofproto_v1_3
 from ryu.lib.packet import packet
 from ryu.lib.packet import ipv4
 from ryu.lib.packet import arp
+from ryu.lib.packet import ethernet
 from ryu.lib.packet import tcp
 
 class MyController(app_manager.RyuApp):
@@ -58,9 +59,19 @@ class MyController(app_manager.RyuApp):
         pkt = packet.Packet(msg.data)
         pkt_arp = pkt.get_protocol(arp.arp)
         if pkt_arp:
-            self.logger.info("this is arp packet\n")
+            self.logger.info("this is ARP packet\n")
             self.logger.info("packet info: %s",pkt_arp)
-            return
+            eth_pkt = pkt.get_protocol(ethernet.ethernet)
+            in_port = msg.match['in_port']
+            dst = eth_pkt.dst
+            actions = [parser.OFPActionOutput(dst)]
+            out = parser.OFPPacketOut(datapath=datapath,
+                            buffer_id=ofproto.OFP_NO_BUFFER,
+                            in_port=in_port,
+                            actions=actions,
+                            data=msg.data)
+            datapath.send_msg(out)
+            return        
 
         self.non_inference_flows[dpid].append(pkt)
         self.logger.info("add non_inference_flow: %s", self.non_inference_flows[dpid])
