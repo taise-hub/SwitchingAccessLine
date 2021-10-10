@@ -65,6 +65,8 @@ class MyController(app_manager.RyuApp):
             in_port = msg.match['in_port']
             dst = eth_pkt.dst
             actions = [parser.OFPActionOutput(dst)]
+            match = parser.OFPMatch(in_port=in_port, eth_dst=dst)
+            self.add_flow(datapath, 1, match, actions)
             out = parser.OFPPacketOut(datapath=datapath,
                             buffer_id=ofproto.OFP_NO_BUFFER,
                             in_port=in_port,
