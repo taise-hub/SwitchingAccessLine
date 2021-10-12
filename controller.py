@@ -56,7 +56,7 @@ class MyController(app_manager.RyuApp):
         msg = ev.msg
         datapath = msg.datapath
         dpid = datapath.id
-        self.matc_to_port.setdefault(dpid, {})
+        self.mac_to_port.setdefault(dpid, {})
         self.non_inference_flows.setdefault(dpid, [])
         pkt = packet.Packet(msg.data)
         pkt_eth = pkt.get_protocol(ethernet.ethernet)
@@ -65,13 +65,13 @@ class MyController(app_manager.RyuApp):
         # arp handling
         pkt_arp = pkt.get_protocol(arp.arp)
         if pkt_arp:
-            self._handle_arp(dpid, in_port, pkt_eth, pkt_arp, msg)
+            self._handle_arp(in_port, pkt_eth, pkt_arp, msg)
             return
         
         # icmp handling
         pkt_icmp = pkt.get_protocol(icmp.icmp)
         if pkt_icmp:
-            self._handle_icmp(dpid, in_port, pkt_eth, pkt_icmp, msg)
+            self._handle_icmp(in_port, pkt_eth, pkt_icmp, msg)
             return
         
         # tcp handling
@@ -141,20 +141,21 @@ class MyController(app_manager.RyuApp):
         req = ofp_parser.OFPPortStatsRequest(datapath, 0, ofp.OFPP_ANY) #全ポートの統計情報を収集
         datapath.send_msg(req)
     
-    def _handle_arp(self, datapath, in_port, pkt_ethernet, pkt_arp, message):
+    def _handle_arp(self, in_port, pkt_ethernet, pkt_arp, message):
         if pkt_arp.opcode != arp.ARP_REQUEST:
             return
         self.logger.info("this is ARP packet\n")
         datapath = message.datapath
+        dpid = datapath.id
         ofproto = datapath.ofproto
         parser = datapath.ofproto_parser
 
         #self.logger.info("packet info: %s",pkt_arp)
         src = pkt_ethernet.src
         dst = pkt_ethernet.dst
-        self.matc_to_port[datapath][src] = in_port
-        if dst in self.matc_to_port[datapath]:
-            out_port = self.matc_to_port[datapath][dst]
+        self.mac_to_port[dpid][src] = in_port
+        if dst in self.mac_to_port[dpid]:
+            out_port = self.mac_to_port[dpid][dst]
         else:
             out_port = ofproto.OFPP_FLOOD
             
@@ -169,16 +170,17 @@ class MyController(app_manager.RyuApp):
         datapath.send_msg(out)
         return
         
-    def _handle_icmp(self, datapath, in_port, pkt_ethernet, pkt_icmp, message):
+    def _handle_icmp(self, in_port, pkt_ethernet, pkt_icmp, message):
         if pkt_icmp.type != icmp.ICMP_ECHO_REQUEST:
             return
         self.logger.info("this is ICMP packet\n")
         datapath = message.datapath
+        dpid = datapath.id
         ofproto = datapath.ofproto
         parser = datapath.ofproto_parser
 
         dst = pkt_ethernet.dst
-        out_port = self.matc_to_port[datapath][dst] # select the most secure access line
+        out_port = self.mac_to_port[dpid][dst] # select the most secure access line
         actions = [parser.OFPActionOutput(out_port)]
         out = parser.OFPPacketOut(datapath=datapath,
                         buffer_id=ofproto.OFP_NO_BUFFER,
