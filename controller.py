@@ -76,7 +76,7 @@ class MyController(app_manager.RyuApp):
         
         pkt_ip = pkt.get_protocol(ipv4.ipv4)
         if pkt_ip is None:
-            self.logger("ipv6 is not yet supported.")
+            self.logger.info("ipv6 is not yet supported.")
             return
         
         # tcp handling
