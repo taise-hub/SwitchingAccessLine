@@ -93,7 +93,7 @@ class MyController(app_manager.RyuApp):
         self.logger.info("packet in %s: %s to %s",dpid, ipv4_src, ipv4_dst)
         match = parser.OFPMatch(ipv4_src=ipv4_src, ipv4_dst=ipv4_dst)
         in_port = msg.match['in_port']
-        out_port = 3 # select the most secure access line
+        out_port = 1 # select the most secure access line
         actions = [parser.OFPActionOutput(out_port)]
         self.add_flow(datapath, 1, match, actions)
         out = parser.OFPPacketOut(datapath=datapath,
