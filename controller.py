@@ -74,26 +74,86 @@ class MyController(app_manager.RyuApp):
             self._handle_icmp(in_port, pkt_eth, pkt_icmp, msg)
             return
         
+        pkt_ip = pkt.get_protocol(ipv4.ipv4)
+        if pkt_ip is None:
+            self.logger("ipv6 is not yet supported.")
+            return
+        
         # tcp handling
-        tcp_pkt = pkt.get_protocol(tcp.tcp)
-        if tcp_pkt:
+        self.non_inference_flows[dpid].append(pkt)
+        pkt_tcp = pkt.get_protocol(tcp.tcp)
+        if pkt_tcp:
+            self._handle_tcp(in_port, pkt_eth, pkt_ip, pkt_tcp, msg)
             return
 
-        # self.non_inference_flows[dpid].append(pkt)
-        # ipv4_pkt = pkt.get_protocol(ipv4.ipv4)
-        # if ipv4_pkt is None: # Only ipv4 is handled.
-        #     return
-        # ipv4_src = ipv4_pkt.src
-        # match = parser.OFPMatch(in_port=in_port, ipv4_dst=ipv4_dst)
-        # self.logger.info("match: %s\n", match)
-        # out_port = self.matc_to_port[dpid][dst] # select the most secure access line
-        # actions = [parser.OFPActionOutput(out_port)]
-        # self.add_flow(datapath, 1, match, actions)
-        # out = parser.OFPPacketOut(datapath=datapath,
-        #                 buffer_id=ofproto.OFP_NO_BUFFER,
-        #                 in_port=in_port, actions=actions,
-        #                 data=msg.data)
-        # datapath.send_msg(out)
+    def _handle_arp(self, in_port, pkt_ethernet, pkt_arp, message):
+        if pkt_arp.opcode not in [arp.ARP_REQUEST, arp.ARP_REPLY]:
+            return
+        self.logger.info("this is ARP packet\n")
+        datapath = message.datapath
+        dpid = datapath.id
+        ofproto = datapath.ofproto
+        parser = datapath.ofproto_parser
+
+        src = pkt_ethernet.src
+        dst = pkt_ethernet.dst
+        self.mac_to_port[dpid][src] = in_port
+        if dst in self.mac_to_port[dpid]:
+            out_port = self.mac_to_port[dpid][dst]
+        else:
+            out_port = ofproto.OFPP_FLOOD
+        self.logger.info("table: %s\n", self.mac_to_port)
+            
+        actions = [parser.OFPActionOutput(out_port)]
+        if out_port != ofproto.OFPP_FLOOD:
+            match = parser.OFPMatch(in_port=in_port, arp_tha=dst)
+            self.add_flow(datapath, 1, match, actions)
+        out = parser.OFPPacketOut(datapath=datapath,
+                                buffer_id=ofproto.OFP_NO_BUFFER,
+                                in_port=in_port, actions=actions,
+                                data=message.data)
+        datapath.send_msg(out)
+        
+    def _handle_icmp(self, in_port, pkt_ethernet, pkt_icmp, message):
+        if pkt_icmp.type not in [icmp.ICMP_ECHO_REQUEST, icmp.ICMP_ECHO_REPLY]:
+            return
+        self.logger.info("this is ICMP packet\n")
+        datapath = message.datapath
+        dpid = datapath.id
+        ofproto = datapath.ofproto
+        parser = datapath.ofproto_parser
+
+        dst = pkt_ethernet.dst
+        out_port = self.mac_to_port[dpid][dst]
+        actions = [parser.OFPActionOutput(out_port)]
+        out = parser.OFPPacketOut(datapath=datapath,
+                        buffer_id=ofproto.OFP_NO_BUFFER,
+                        in_port=in_port, actions=actions,
+                        data=message.data)
+        datapath.send_msg(out)
+        return
+    
+    def _handle_tcp(self, in_port, pkt_ethernet, pkt_ip, pkt_tcp, message):
+        self.logger.info("this is TCP packet\n")
+        datapath = message.datapath
+        dpid = datapath.id
+        ofproto = datapath.ofproto
+        parser = datapath.ofproto_parser
+
+        dst = pkt_ethernet.dst
+        ipv4_dst = pkt_ip.dst
+        tcp_src = pkt_tcp.src
+        tcp_dst = pkt_tcp.dst
+        match = parser.OFPMatch(in_port=in_port, ipv4_dst=ipv4_dst, tcp_src=tcp_src, tcp_dst=tcp_dst)
+        out_port = self.matc_to_port[dpid][dst] # TODO: select the most secure access line
+        actions = [parser.OFPActionOutput(out_port)]
+        self.add_flow(datapath, 1, match, actions)
+        out = parser.OFPPacketOut(datapath=datapath,
+                        buffer_id=ofproto.OFP_NO_BUFFER,
+                        in_port=in_port, actions=actions,
+                        data=message.data)
+        datapath.send_msg(out)
+        return
 
     @set_ev_cls(ofp_event.EventOFPPortStatsReply, MAIN_DISPATCHER)
     def port_stats_reply_handler(self, ev):
@@ -140,58 +200,6 @@ class MyController(app_manager.RyuApp):
         ofp_parser = datapath.ofproto_parser
         req = ofp_parser.OFPPortStatsRequest(datapath, 0, ofp.OFPP_ANY) #全ポートの統計情報を収集
         datapath.send_msg(req)
-    
-    def _handle_arp(self, in_port, pkt_ethernet, pkt_arp, message):
-        if pkt_arp.opcode not in [arp.ARP_REQUEST, arp.ARP_REPLY]:
-            return
-        self.logger.info("this is ARP packet\n")
-        datapath = message.datapath
-        dpid = datapath.id
-        ofproto = datapath.ofproto
-        parser = datapath.ofproto_parser
-
-        #self.logger.info("packet info: %s",pkt_arp)
-        src = pkt_ethernet.src
-        dst = pkt_ethernet.dst
-        self.mac_to_port[dpid][src] = in_port
-        if dst in self.mac_to_port[dpid]:
-            out_port = self.mac_to_port[dpid][dst]
-        else:
-            out_port = ofproto.OFPP_FLOOD
-        self.logger.info("table: %s\n", self.mac_to_port)
-            
-        actions = [parser.OFPActionOutput(out_port)]
-        if out_port != ofproto.OFPP_FLOOD:
-            match = parser.OFPMatch(in_port=in_port, arp_tha=dst)
-            self.add_flow(datapath, 1, match, actions)
-        out = parser.OFPPacketOut(datapath=datapath,
-                                buffer_id=ofproto.OFP_NO_BUFFER,
-                                in_port=in_port, actions=actions,
-                                data=message.data)
-        datapath.send_msg(out)
-        
-    def _handle_icmp(self, in_port, pkt_ethernet, pkt_icmp, message):
-        if pkt_icmp.type not in [icmp.ICMP_ECHO_REQUEST, icmp.ICMP_ECHO_REPLY]:
-            return
-        self.logger.info("this is ICMP packet\n")
-        datapath = message.datapath
-        dpid = datapath.id
-        ofproto = datapath.ofproto
-        parser = datapath.ofproto_parser
-
-        dst = pkt_ethernet.dst
-        out_port = self.mac_to_port[dpid][dst] # select the most secure access line
-        actions = [parser.OFPActionOutput(out_port)]
-        out = parser.OFPPacketOut(datapath=datapath,
-                        buffer_id=ofproto.OFP_NO_BUFFER,
-                        in_port=in_port, actions=actions,
-                        data=message.data)
-        datapath.send_msg(out)
-        
-        
-        return
-
-
 
 class ApplicationRequest:
     name = None
