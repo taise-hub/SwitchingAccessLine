@@ -2,7 +2,7 @@ import sys
 from ryu.cmd import manager
 
 def main():
-    sys.argv.append('./controller')
+    sys.argv.append('/home/parallels/Desktop/SwitchingAccessLine/controller.py')
     sys.argv.append('--enable-debugger')
     manager.main()
 
