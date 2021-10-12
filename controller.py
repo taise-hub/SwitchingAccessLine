@@ -62,7 +62,7 @@ class MyController(app_manager.RyuApp):
         pkt_arp = pkt.get_protocol(arp.arp)
         if pkt_arp:
             self.logger.info("this is ARP packet\n")
-            self.logger.info("packet info: %s",pkt_arp)
+            #self.logger.info("packet info: %s",pkt_arp)
             in_port = msg.match['in_port']
             eth_pkt = pkt.get_protocol(ethernet.ethernet)
             src = eth_pkt.src
@@ -86,8 +86,10 @@ class MyController(app_manager.RyuApp):
         self.logger.info("this is TCP packet")
 
         self.non_inference_flows[dpid].append(pkt)
-        self.logger.info("add non_inference_flow: %s", self.non_inference_flows[dpid])
+        #self.logger.info("add non_inference_flow: %s", self.non_inference_flows[dpid])
         ipv4_pkt = pkt.get_protocol(ipv4.ipv4)
+        if ipv4_pkt is None: # Only ipv4 is handled.
+            return
         ipv4_src = ipv4_pkt.src
         ipv4_dst = ipv4_pkt.dst
         self.logger.info("packet in %s: %s to %s",dpid, ipv4_src, ipv4_dst)
