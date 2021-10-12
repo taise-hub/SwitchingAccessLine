@@ -135,17 +135,20 @@ class MyController(app_manager.RyuApp):
     
     def _handle_tcp(self, in_port, pkt_ethernet, pkt_ip, pkt_tcp, message):
         self.logger.info("this is TCP packet\n")
+        self.logger.info("is this same packet??\n")
+        self.logger.info("flow: %s %s %s\n\n", pkt_ethernet, pkt_ip, pkt_tcp)
         datapath = message.datapath
         dpid = datapath.id
         ofproto = datapath.ofproto
         parser = datapath.ofproto_parser
 
-        dst = pkt_ethernet.dst
+        dst = pkt_ethernet.dst 
+        ipv4_src = pkt_ip.src
         ipv4_dst = pkt_ip.dst
-        tcp_src = pkt_tcp.src
-        tcp_dst = pkt_tcp.dst
-        match = parser.OFPMatch(in_port=in_port, ipv4_dst=ipv4_dst, tcp_src=tcp_src, tcp_dst=tcp_dst)
-        out_port = self.matc_to_port[dpid][dst] # TODO: select the most secure access line
+        tcp_src = pkt_tcp.src_port
+        tcp_dst = pkt_tcp.dst_port
+        match = parser.OFPMatch(eth_type=pkt_ethernet.ethertype, ip_proto=pkt_ip.proto, ipv4_src=ipv4_src, ipv4_dst=ipv4_dst, tcp_dst=tcp_dst)
+        out_port = self.mac_to_port[dpid][dst] # TODO: select the most secure access line
         actions = [parser.OFPActionOutput(out_port)]
         self.add_flow(datapath, 1, match, actions)
         out = parser.OFPPacketOut(datapath=datapath,
