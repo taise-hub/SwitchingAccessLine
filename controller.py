@@ -16,7 +16,7 @@ class MyController(app_manager.RyuApp):
 
     def __init__(self, *args, **kwargs):
         super(MyController, self).__init__(*args, **kwargs)
-        self.matc_to_port = {}
+        self.mac_to_port = {}
         self.non_inference_flows = {} #リアルタイムで流れているFlowのオブジェクトを格納 {dpid:[]}
         
 
@@ -142,7 +142,7 @@ class MyController(app_manager.RyuApp):
         datapath.send_msg(req)
     
     def _handle_arp(self, in_port, pkt_ethernet, pkt_arp, message):
-        if pkt_arp.opcode != arp.ARP_REQUEST:
+        if pkt_arp.opcode not in [arp.ARP_REQUEST, arp.ARP_REPLY]:
             return
         self.logger.info("this is ARP packet\n")
         datapath = message.datapath
@@ -158,6 +158,7 @@ class MyController(app_manager.RyuApp):
             out_port = self.mac_to_port[dpid][dst]
         else:
             out_port = ofproto.OFPP_FLOOD
+        self.logger.info("table: %s\n", self.mac_to_port)
             
         actions = [parser.OFPActionOutput(out_port)]
         if out_port != ofproto.OFPP_FLOOD:
@@ -168,10 +169,9 @@ class MyController(app_manager.RyuApp):
                                 in_port=in_port, actions=actions,
                                 data=message.data)
         datapath.send_msg(out)
-        return
         
     def _handle_icmp(self, in_port, pkt_ethernet, pkt_icmp, message):
-        if pkt_icmp.type != icmp.ICMP_ECHO_REQUEST:
+        if pkt_icmp.type not in [icmp.ICMP_ECHO_REQUEST, icmp.ICMP_ECHO_REPLY]:
             return
         self.logger.info("this is ICMP packet\n")
         datapath = message.datapath
