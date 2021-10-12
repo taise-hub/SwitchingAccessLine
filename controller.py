@@ -59,14 +59,14 @@ class MyController(app_manager.RyuApp):
         self.matc_to_port.setdefault(dpid, {})
         self.non_inference_flows.setdefault(dpid, [])
         pkt = packet.Packet(msg.data)
+        eth_pkt = pkt.get_protocol(ethernet.ethernet)
+        src = eth_pkt.src
+        dst = eth_pkt.dst
+        in_port = msg.match['in_port']
         pkt_arp = pkt.get_protocol(arp.arp)
         if pkt_arp:
             self.logger.info("this is ARP packet\n")
             #self.logger.info("packet info: %s",pkt_arp)
-            in_port = msg.match['in_port']
-            eth_pkt = pkt.get_protocol(ethernet.ethernet)
-            src = eth_pkt.src
-            dst = eth_pkt.dst
             self.matc_to_port[dpid][src] = in_port
             if dst in self.matc_to_port[dpid]:
                 out_port = self.matc_to_port[dpid][dst]
@@ -82,22 +82,19 @@ class MyController(app_manager.RyuApp):
                                   in_port=in_port, actions=actions,
                                   data=msg.data)
             datapath.send_msg(out)
-            return        
-        self.logger.info("this is TCP packet")
+            return   
+        #self.logger.info("mac_to_port: %s\n", self.matc_to_port)
+        self.logger.info("flow: %s\n", pkt)
 
         self.non_inference_flows[dpid].append(pkt)
-        self.logger.info("[DEBUG] Add non_inference_flow\n%s\n", self.non_inference_flows[dpid][-1])
         eth_pkt = pkt.get_protocol(ethernet.ethernet)
-        src = eth_pkt.src
         ipv4_pkt = pkt.get_protocol(ipv4.ipv4)
         if ipv4_pkt is None: # Only ipv4 is handled.
             return
         ipv4_src = ipv4_pkt.src
-        ipv4_dst = ipv4_pkt.dst
-        self.logger.info("packet in %s: %s to %s",dpid, ipv4_src, ipv4_dst)
-        match = parser.OFPMatch(ipv4_src=ipv4_src, ipv4_dst=ipv4_dst)
-        in_port = msg.match['in_port']
-        out_port = self.matc_to_port[dpid][src] # select the most secure access line
+        match = parser.OFPMatch(in_port=in_port, ipv4_dst=ipv4_dst)
+        self.logger.info("match: %s\n", match)
+        out_port = self.matc_to_port[dpid][dst] # select the most secure access line
         actions = [parser.OFPActionOutput(out_port)]
         self.add_flow(datapath, 1, match, actions)
         out = parser.OFPPacketOut(datapath=datapath,
