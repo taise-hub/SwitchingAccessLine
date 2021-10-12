@@ -88,6 +88,7 @@ class MyController(app_manager.RyuApp):
         self.non_inference_flows[dpid].append(pkt)
         self.logger.info("[DEBUG] Add non_inference_flow\n%s\n", self.non_inference_flows[dpid][-1])
         eth_pkt = pkt.get_protocol(ethernet.ethernet)
+        src = eth_pkt.src
         ipv4_pkt = pkt.get_protocol(ipv4.ipv4)
         if ipv4_pkt is None: # Only ipv4 is handled.
             return
@@ -96,7 +97,7 @@ class MyController(app_manager.RyuApp):
         self.logger.info("packet in %s: %s to %s",dpid, ipv4_src, ipv4_dst)
         match = parser.OFPMatch(ipv4_src=ipv4_src, ipv4_dst=ipv4_dst)
         in_port = msg.match['in_port']
-        out_port = eth_pkt.dst # select the most secure access line
+        out_port = self.matc_to_port[dpid][src] # select the most secure access line
         actions = [parser.OFPActionOutput(out_port)]
         self.add_flow(datapath, 1, match, actions)
         out = parser.OFPPacketOut(datapath=datapath,
