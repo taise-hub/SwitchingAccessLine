@@ -4,10 +4,12 @@ from ryu.controller.handler import CONFIG_DISPATCHER, MAIN_DISPATCHER
 from ryu.controller.handler import set_ev_cls
 from ryu.ofproto import ofproto_v1_3
 from ryu.lib.packet import packet
-from ryu.lib.packet import ipv4
-from ryu.lib.packet import arp
 from ryu.lib.packet import ethernet
+from ryu.lib.packet import arp
+from ryu.lib.packet import ipv4
+from ryu.lib.packet import icmp
 from ryu.lib.packet import tcp
+
 
 class MyController(app_manager.RyuApp):
     OFP_VERSIONS = [ofproto_v1_3.OFP_VERSION] #バージョン:OpenFlow 1.3
@@ -59,49 +61,41 @@ class MyController(app_manager.RyuApp):
         self.matc_to_port.setdefault(dpid, {})
         self.non_inference_flows.setdefault(dpid, [])
         pkt = packet.Packet(msg.data)
-        eth_pkt = pkt.get_protocol(ethernet.ethernet)
-        src = eth_pkt.src
-        dst = eth_pkt.dst
+        pkt_eth = pkt.get_protocol(ethernet.ethernet)
         in_port = msg.match['in_port']
+
+        # arp handling
         pkt_arp = pkt.get_protocol(arp.arp)
         if pkt_arp:
-            self.logger.info("this is ARP packet\n")
-            #self.logger.info("packet info: %s",pkt_arp)
-            self.matc_to_port[dpid][src] = in_port
-            if dst in self.matc_to_port[dpid]:
-                out_port = self.matc_to_port[dpid][dst]
-            else:
-                out_port = ofproto.OFPP_FLOOD
-            
-            actions = [parser.OFPActionOutput(out_port)]
-            if out_port != ofproto.OFPP_FLOOD:
-                match = parser.OFPMatch(in_port=in_port, arp_tha=dst)
-                self.add_flow(datapath, 1, match, actions)
-            out = parser.OFPPacketOut(datapath=datapath,
-                                  buffer_id=ofproto.OFP_NO_BUFFER,
-                                  in_port=in_port, actions=actions,
-                                  data=msg.data)
-            datapath.send_msg(out)
-            return   
-        #self.logger.info("mac_to_port: %s\n", self.matc_to_port)
-        self.logger.info("flow: %s\n", pkt)
-
-        self.non_inference_flows[dpid].append(pkt)
-        eth_pkt = pkt.get_protocol(ethernet.ethernet)
-        ipv4_pkt = pkt.get_protocol(ipv4.ipv4)
-        if ipv4_pkt is None: # Only ipv4 is handled.
+            self._handle_arp(dpid, in_port, pkt_eth, pkt_arp, msg)
             return
-        ipv4_src = ipv4_pkt.src
-        match = parser.OFPMatch(in_port=in_port, ipv4_dst=ipv4_dst)
-        self.logger.info("match: %s\n", match)
-        out_port = self.matc_to_port[dpid][dst] # select the most secure access line
-        actions = [parser.OFPActionOutput(out_port)]
-        self.add_flow(datapath, 1, match, actions)
-        out = parser.OFPPacketOut(datapath=datapath,
-                        buffer_id=ofproto.OFP_NO_BUFFER,
-                        in_port=in_port, actions=actions,
-                        data=msg.data)
-        datapath.send_msg(out)
+        
+        # icmp handling
+        pkt_icmp = pkt.get_protocol(icmp.icmp)
+        if pkt_icmp:
+            self._handle_icmp(dpid, in_port, pkt_eth, pkt_icmp, msg)
+            return
+        
+        # tcp handling
+        tcp_pkt = pkt.get_protocol(tcp.tcp)
+        if tcp_pkt:
+            return
+
+        # self.non_inference_flows[dpid].append(pkt)
+        # ipv4_pkt = pkt.get_protocol(ipv4.ipv4)
+        # if ipv4_pkt is None: # Only ipv4 is handled.
+        #     return
+        # ipv4_src = ipv4_pkt.src
+        # match = parser.OFPMatch(in_port=in_port, ipv4_dst=ipv4_dst)
+        # self.logger.info("match: %s\n", match)
+        # out_port = self.matc_to_port[dpid][dst] # select the most secure access line
+        # actions = [parser.OFPActionOutput(out_port)]
+        # self.add_flow(datapath, 1, match, actions)
+        # out = parser.OFPPacketOut(datapath=datapath,
+        #                 buffer_id=ofproto.OFP_NO_BUFFER,
+        #                 in_port=in_port, actions=actions,
+        #                 data=msg.data)
+        # datapath.send_msg(out)
 
     @set_ev_cls(ofp_event.EventOFPPortStatsReply, MAIN_DISPATCHER)
     def port_stats_reply_handler(self, ev):
@@ -148,6 +142,45 @@ class MyController(app_manager.RyuApp):
         ofp_parser = datapath.ofproto_parser
         req = ofp_parser.OFPPortStatsRequest(datapath, 0, ofp.OFPP_ANY) #全ポートの統計情報を収集
         datapath.send_msg(req)
+    
+    def _handle_arp(self, datapath, in_port, pkt_ethernet, pkt_arp, message):
+        if pkt_arp.opcode != arp.ARP_REQUEST:
+            return
+        self.logger.info("this is ARP packet\n")
+        #self.logger.info("packet info: %s",pkt_arp)
+        src = pkt_ethernet.src
+        dst = pkt_ethernet.dst
+        self.matc_to_port[datapath][src] = in_port
+        if dst in self.matc_to_port[datapath]:
+            out_port = self.matc_to_port[datapath][dst]
+        else:
+            out_port = ofproto.OFPP_FLOOD
+            
+        actions = [parser.OFPActionOutput(out_port)]
+        if out_port != ofproto.OFPP_FLOOD:
+            match = parser.OFPMatch(in_port=in_port, arp_tha=dst)
+            self.add_flow(datapath, 1, match, actions)
+        out = parser.OFPPacketOut(datapath=datapath,
+                                buffer_id=ofproto.OFP_NO_BUFFER,
+                                in_port=in_port, actions=actions,
+                                data=message.data)
+        datapath.send_msg(out)
+        return
+        
+    def _handle_icmp(self, datapath, in_port, pkt_ethernet, pkt_icmp, msg):
+        if pkt_icmp.type != icmp.ICMP_ECHO_REQUEST:
+            return
+        dst = pkt_ethernet.dst
+        out_port = self.matc_to_port[datapath][dst] # select the most secure access line
+        actions = [parser.OFPActionOutput(out_port)]
+        out = parser.OFPPacketOut(datapath=datapath,
+                        buffer_id=ofproto.OFP_NO_BUFFER,
+                        in_port=in_port, actions=actions,
+                        data=msg.data)
+        datapath.send_msg(out)
+        
+        
+        return
 
 
 
