@@ -1,8 +1,9 @@
 from ryu.base import app_manager
 from ryu.controller import ofp_event
-from ryu.controller.handler import CONFIG_DISPATCHER, MAIN_DISPATCHER
+from ryu.controller.handler import CONFIG_DISPATCHER, MAIN_DISPATCHER, DEAD_DISPATCHER
 from ryu.controller.handler import set_ev_cls
 from ryu.ofproto import ofproto_v1_3
+from ryu.lib import hub
 from ryu.lib.packet import packet
 from ryu.lib.packet import ethernet
 from ryu.lib.packet import arp
@@ -18,7 +19,8 @@ class MyController(app_manager.RyuApp):
         super(MyController, self).__init__(*args, **kwargs)
         self.mac_to_port = {}
         self.non_inference_flows = {} #リアルタイムで流れているFlowのオブジェクトを格納 {dpid:[]}
-        
+        self.datapaths = {}
+        self.monitor_thread = hub.spawn(self._monitor)
 
     # install the table-miss flow entry.
     @set_ev_cls(ofp_event.EventOFPSwitchFeatures, CONFIG_DISPATCHER)
@@ -157,9 +159,44 @@ class MyController(app_manager.RyuApp):
                         data=message.data)
         datapath.send_msg(out)
         return
+    
+    @set_ev_cls(ofp_event.EventOFPStateChange, [MAIN_DISPATCHER, DEAD_DISPATCHER])
+    def _state_change_handler(self, ev):
+        """
+        スイッチの接続および切断を検出します。
+        """
+        datapath = ev.datapath
+        if ev.state == MAIN_DISPATCHER:
+            if datapath.id not in self.datapaths:
+                self.logger.debug('register datapath: %016x', datapath.id)
+                self.datapaths[datapath.id] = datapath
+        elif ev.state == DEAD_DISPATCHER:
+            if datapath.id in self.datapaths:
+                self.logger.debug('unregister datapath: %016x', datapath.id)
+                del self.datapath[datapath.id]
+
+    def _monitor(self):
+        """
+        10秒ごとにrequest_stats()を実行します。
+        """
+        while True:
+            for dp in self.datapaths.values():
+                self._request_stats(dp)
+            hub.sleep(10)
+    
+    def _request_stats(self, datapath):
+        """
+        OFSに各ポートの統計情報をリクエストする関数です。
+        """
+        self.logger.debug('send stats request: %016x', datapath.id)
+        ofproto = datapath.ofproto
+        parser = datapath.ofproto_parser
+
+        req = parser.OFPPortStatsRequest(datapath, 0, ofproto.OFPP_ANY)
+        datapath.send_msg(req)
 
     @set_ev_cls(ofp_event.EventOFPPortStatsReply, MAIN_DISPATCHER)
-    def port_stats_reply_handler(self, ev):
+    def _port_stats_reply_handler(self, ev):
         """
         port statistic replyを受け取るハンドラーです。
         このハンドラーは、統計情報を更新し未遂論のフローがキューに残っていれば推論を行い、フローエントリーを更新します。
@@ -194,15 +231,6 @@ class MyController(app_manager.RyuApp):
         datapath.send_msg(mod)
         return
 
-    def send_port_stats_request(self, datapath):
-        """
-        OFSに各ポートの統計情報をリクエストする関数です。
-        一秒毎にポーリングする予定です。
-        """
-        ofp = datapath.ofproto
-        ofp_parser = datapath.ofproto_parser
-        req = ofp_parser.OFPPortStatsRequest(datapath, 0, ofp.OFPP_ANY) #全ポートの統計情報を収集
-        datapath.send_msg(req)
 
 class ApplicationRequest:
     name = None
