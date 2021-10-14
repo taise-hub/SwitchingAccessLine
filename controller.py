@@ -78,7 +78,7 @@ class MyController(app_manager.RyuApp):
         
         pkt_ip = pkt.get_protocol(ipv4.ipv4)
         if pkt_ip is None:
-            self.logger.info("ipv6 is not yet supported.")
+            self.logger.debug("ipv6 is not yet supported.")
             return
         
         # tcp handling
@@ -91,7 +91,7 @@ class MyController(app_manager.RyuApp):
     def _handle_arp(self, in_port, pkt_ethernet, pkt_arp, message):
         if pkt_arp.opcode not in [arp.ARP_REQUEST, arp.ARP_REPLY]:
             return
-        self.logger.info("this is ARP packet\n")
+        self.logger.debug("this is ARP packet\n")
         datapath = message.datapath
         dpid = datapath.id
         ofproto = datapath.ofproto
@@ -104,7 +104,7 @@ class MyController(app_manager.RyuApp):
             out_port = self.mac_to_port[dpid][dst]
         else:
             out_port = ofproto.OFPP_FLOOD
-        self.logger.info("table: %s\n", self.mac_to_port)
+        self.logger.debug("table: %s\n", self.mac_to_port)
             
         actions = [parser.OFPActionOutput(out_port)]
         if out_port != ofproto.OFPP_FLOOD:
@@ -119,7 +119,7 @@ class MyController(app_manager.RyuApp):
     def _handle_icmp(self, in_port, pkt_ethernet, pkt_icmp, message):
         if pkt_icmp.type not in [icmp.ICMP_ECHO_REQUEST, icmp.ICMP_ECHO_REPLY]:
             return
-        self.logger.info("this is ICMP packet\n")
+        self.logger.debug("this is ICMP packet\n")
         datapath = message.datapath
         dpid = datapath.id
         ofproto = datapath.ofproto
@@ -137,8 +137,6 @@ class MyController(app_manager.RyuApp):
     
     def _handle_tcp(self, in_port, pkt_ethernet, pkt_ip, pkt_tcp, message):
         self.logger.info("this is TCP packet\n")
-        self.logger.info("is this same packet??\n")
-        self.logger.info("flow: %s %s %s\n\n", pkt_ethernet, pkt_ip, pkt_tcp)
         datapath = message.datapath
         dpid = datapath.id
         ofproto = datapath.ofproto
@@ -192,29 +190,8 @@ class MyController(app_manager.RyuApp):
         ofproto = datapath.ofproto
         parser = datapath.ofproto_parser
         
-        req = parser.OFPFlowStatsRequest(datapath)
-        datapath.send_msg(req)
-        
         req = parser.OFPPortStatsRequest(datapath, 0, ofproto.OFPP_ANY)
         datapath.send_msg(req)
-
-    @set_ev_cls(ofp_event.EventOFPFlowStatsReply, MAIN_DISPATCHER)
-    def _flow_stats_reply_handler(self, ev):
-        body = ev.msg.body
-        self.logger.info('datapath '
-            'in-port eth-dst '
-            'out-port packets bytes')
-        self.logger.info('---------------- '
-            '-------- ----------------- '
-            '-------- -------- --------')
-        for stat in sorted([flow for flow in body if flow.priority == 1],
-                              key=lambda flow: (flow.match['in_port'],
-                            flow.match['eth_dst'])):
-            self.logger.info('%016x %8x %17s %8x %8d %8d',
-                            ev.msg.datapath.id,
-                            stat.match['in_port'], stat.match['eth_dst'],
-                            stat.instructions[0].actions[0].port,
-                            stat.packet_count, stat.byte_count)
 
     @set_ev_cls(ofp_event.EventOFPPortStatsReply, MAIN_DISPATCHER)
     def _port_stats_reply_handler(self, ev):
@@ -239,7 +216,7 @@ class MyController(app_manager.RyuApp):
                         stat.rx_frame_err, stat.rx_over_err,
                         stat.rx_crc_err, stat.collisions,
                         stat.duration_sec, stat.duration_nsec))
-        self.logger.debug('PortStats: %s', ports)
+        self.logger.info('PortStats: %s', ports)
 
     def drop_flow(self, datapath, match):
         """
