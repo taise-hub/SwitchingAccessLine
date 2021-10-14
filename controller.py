@@ -63,8 +63,6 @@ class MyController(app_manager.RyuApp):
         pkt = packet.Packet(msg.data)
         pkt_eth = pkt.get_protocol(ethernet.ethernet)
         in_port = msg.match['in_port']
-        self.logger.debug('register datapath: %016x', datapath.id)
-        self.datapaths[datapath.id] = datapath
 
         # arp handling
         pkt_arp = pkt.get_protocol(arp.arp)
@@ -175,7 +173,7 @@ class MyController(app_manager.RyuApp):
         elif ev.state == DEAD_DISPATCHER:
             if datapath.id in self.datapaths:
                 self.logger.debug('unregister datapath: %016x', datapath.id)
-                del self.datapath[datapath.id]
+                del self.datapaths[datapath.id]
 
     def _monitor(self):
         """
@@ -193,9 +191,30 @@ class MyController(app_manager.RyuApp):
         self.logger.debug('send stats request: %016x', datapath.id)
         ofproto = datapath.ofproto
         parser = datapath.ofproto_parser
-
+        
+        req = parser.OFPFlowStatsRequest(datapath)
+        datapath.send_msg(req)
+        
         req = parser.OFPPortStatsRequest(datapath, 0, ofproto.OFPP_ANY)
         datapath.send_msg(req)
+
+    @set_ev_cls(ofp_event.EventOFPFlowStatsReply, MAIN_DISPATCHER)
+    def _flow_stats_reply_handler(self, ev):
+        body = ev.msg.body
+        self.logger.info('datapath '
+            'in-port eth-dst '
+            'out-port packets bytes')
+        self.logger.info('---------------- '
+            '-------- ----------------- '
+            '-------- -------- --------')
+        for stat in sorted([flow for flow in body if flow.priority == 1],
+                              key=lambda flow: (flow.match['in_port'],
+                            flow.match['eth_dst'])):
+            self.logger.info('%016x %8x %17s %8x %8d %8d',
+                            ev.msg.datapath.id,
+                            stat.match['in_port'], stat.match['eth_dst'],
+                            stat.instructions[0].actions[0].port,
+                            stat.packet_count, stat.byte_count)
 
     @set_ev_cls(ofp_event.EventOFPPortStatsReply, MAIN_DISPATCHER)
     def _port_stats_reply_handler(self, ev):
