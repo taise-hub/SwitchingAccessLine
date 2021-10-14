@@ -180,8 +180,9 @@ class MyController(app_manager.RyuApp):
         10秒ごとにrequest_stats()を実行します。
         """
         while True:
-            for dp in self.datapaths.values():
-                self._request_stats(dp)
+            self._request_stats(1)
+            #for dp in self.datapaths.values():
+            #    self._request_stats(dp)
             hub.sleep(10)
     
     def _request_stats(self, datapath):
@@ -230,25 +231,3 @@ class MyController(app_manager.RyuApp):
         mod = parser.OFPFlowMod(datapath=datapath, command=ofproto.OFPFC_DELETE, match=match)
         datapath.send_msg(mod)
         return
-
-
-class ApplicationRequest:
-    name = None
-    utilization_rate = None
-    delay = None
-    packet_loss = None
-    jitter = None
-    bandwidth = None
-    cost = None
-    security_score = None
-    def __init__(self, name):
-        self.name = name
-        self.affect_application()
-    
-    def __affect_application(self):
-        if self.name == 'health_care':
-            self.delay = 20
-            self.packet_loss = 30
-            self.security_score = 3
-        if self.name == 'voip':
-            pass
