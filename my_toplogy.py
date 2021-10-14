@@ -23,7 +23,7 @@ def topology():
 	router1 = net.addHost('r1')
 	switch1 = net.addSwitch('s1')
 	switch2 = net.addSwitch('s2')
-	c0 = net.addController('c0', controller=RemoteController, ip='127.0.0.1',port=6633)
+	c0 = net.addController('c0', controller=RemoteController, ip='127.0.0.1',port=6633, protocols="OpenFlow13")
 	net.addLink(router1, switch1)
 	net.addLink(router1, switch2)
 	net.addLink(host1, switch1)
