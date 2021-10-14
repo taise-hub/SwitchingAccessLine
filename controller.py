@@ -1,3 +1,5 @@
+from orerator import attrgetter
+
 from ryu.base import app_manager
 from ryu.controller import ofp_event
 from ryu.controller.handler import CONFIG_DISPATCHER, MAIN_DISPATCHER, DEAD_DISPATCHER
@@ -199,24 +201,18 @@ class MyController(app_manager.RyuApp):
         port statistic replyを受け取るハンドラーです。
         このハンドラーは、統計情報を更新し未遂論のフローがキューに残っていれば推論を行い、フローエントリーを更新します。
         """
-        ports = []
-        for stat in ev.msg.body:
-            ports.append('port_no=%d '
-                        'rx_packets=%d tx_packets=%d '
-                        'rx_bytes=%d tx_bytes=%d '
-                        'rx_dropped=%d tx_dropped=%d '
-                        'rx_errors=%d tx_errors=%d '
-                        'rx_frame_err=%d rx_over_err=%d rx_crc_err=%d '
-                        'collisions=%d duration_sec=%d duration_nsec=%d' %
-                        (stat.port_no,
-                        stat.rx_packets, stat.tx_packets,
-                        stat.rx_bytes, stat.tx_bytes,
-                        stat.rx_dropped, stat.tx_dropped,
-                        stat.rx_errors, stat.tx_errors,
-                        stat.rx_frame_err, stat.rx_over_err,
-                        stat.rx_crc_err, stat.collisions,
-                        stat.duration_sec, stat.duration_nsec))
-        self.logger.info('PortStats: %s', ports)
+        body = ev.msg.body
+        self.logger.info('datapath port '
+                        'rx-pkts rx-bytes rx-error '
+                        'tx-pkts tx-bytes tx-error')
+        self.logger.info('---------------- -------- '
+                        '-------- -------- -------- '
+                        '-------- -------- --------')
+        for stat in sorted(body, key=attrgetter('port_no')):
+            self.logger.info('%016x %8x %8d %8d %8d %8d %8d %8d',
+                    ev.msg.datapath.id, stat.port_no,
+                    stat.rx_packets, stat.rx_bytes, stat.rx_errors,
+                    stat.tx_packets, stat.tx_bytes, stat.tx_errors)
 
     def drop_flow(self, datapath, match):
         """
