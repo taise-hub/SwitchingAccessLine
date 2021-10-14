@@ -63,6 +63,8 @@ class MyController(app_manager.RyuApp):
         pkt = packet.Packet(msg.data)
         pkt_eth = pkt.get_protocol(ethernet.ethernet)
         in_port = msg.match['in_port']
+        self.logger.debug('register datapath: %016x', datapath.id)
+        self.datapaths[datapath.id] = datapath
 
         # arp handling
         pkt_arp = pkt.get_protocol(arp.arp)
@@ -180,9 +182,8 @@ class MyController(app_manager.RyuApp):
         10秒ごとにrequest_stats()を実行します。
         """
         while True:
-            self._request_stats(1)
-            #for dp in self.datapaths.values():
-            #    self._request_stats(dp)
+            for dp in self.datapaths.values():
+                self._request_stats(dp)
             hub.sleep(10)
     
     def _request_stats(self, datapath):
