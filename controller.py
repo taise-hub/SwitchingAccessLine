@@ -147,10 +147,10 @@ class MyController(app_manager.RyuApp):
         dst = pkt_ethernet.dst 
         ipv4_src = pkt_ip.src
         ipv4_dst = pkt_ip.dst
-        tcp_src = pkt_tcp.src_port
         tcp_dst = pkt_tcp.dst_port
         match = parser.OFPMatch(eth_type=pkt_ethernet.ethertype, ip_proto=pkt_ip.proto, ipv4_src=ipv4_src, ipv4_dst=ipv4_dst, tcp_dst=tcp_dst)
         out_port = self.mac_to_port[dpid][dst] # TODO: select the most secure access line
+        self.logger.info(out_port)
         actions = [parser.OFPActionOutput(out_port)]
         self.add_flow(datapath, 1, match, actions)
         out = parser.OFPPacketOut(datapath=datapath,
@@ -213,14 +213,6 @@ class MyController(app_manager.RyuApp):
                     ev.msg.datapath.id, stat.port_no,
                     stat.rx_packets, stat.rx_bytes, stat.rx_errors,
                     stat.tx_packets, stat.tx_bytes, stat.tx_errors)
-
-    def drop_flow(self, datapath, match):
-        """
-        フローエントリをドロップする関数です。
-        利用するかは未定です。
-        """
-        ofproto = datapath.ofproto
-        parser = datapath.ofproto_parser
-        mod = parser.OFPFlowMod(datapath=datapath, command=ofproto.OFPFC_DELETE, match=match)
-        datapath.send_msg(mod)
+    
+    def _access_line_calculator(self):
         return
