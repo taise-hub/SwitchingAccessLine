@@ -1,4 +1,4 @@
-from orerator import attrgetter
+from operator import attrgetter
 
 from ryu.base import app_manager
 from ryu.controller import ofp_event
