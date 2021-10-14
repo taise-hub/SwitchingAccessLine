@@ -149,6 +149,7 @@ class MyController(app_manager.RyuApp):
         ipv4_dst = pkt_ip.dst
         tcp_dst = pkt_tcp.dst_port
         match = parser.OFPMatch(eth_type=pkt_ethernet.ethertype, ip_proto=pkt_ip.proto, ipv4_src=ipv4_src, ipv4_dst=ipv4_dst, tcp_dst=tcp_dst)
+        self.logger.info("inport: %s     ip: %s",in_port ,ipv4_src)
         out_port = self.mac_to_port[dpid][dst] # TODO: select the most secure access line
         self.logger.info(out_port)
         actions = [parser.OFPActionOutput(out_port)]
