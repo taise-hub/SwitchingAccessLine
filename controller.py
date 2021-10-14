@@ -148,7 +148,7 @@ class MyController(app_manager.RyuApp):
         ipv4_src = pkt_ip.src
         ipv4_dst = pkt_ip.dst
         tcp_dst = pkt_tcp.dst_port
-        if ipv4_dst == "10.0.1.1":
+        if dst == "00:00:00:00:01:01" or "00:00:00:00:01:02":
             self.logger.info("default gate way")
             return
         match = parser.OFPMatch(eth_type=pkt_ethernet.ethertype, ip_proto=pkt_ip.proto, ipv4_src=ipv4_src, ipv4_dst=ipv4_dst, tcp_dst=tcp_dst)
