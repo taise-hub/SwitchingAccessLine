@@ -80,7 +80,7 @@ class MyController(app_manager.RyuApp):
         
         pkt_ip = pkt.get_protocol(ipv4.ipv4)
         if pkt_ip is None:
-            self.logger.debug("ipv6 is not yet supported.")
+  #          self.logger.debug("ipv6 is not yet supported.")
             return
         
         # tcp handling
@@ -101,6 +101,7 @@ class MyController(app_manager.RyuApp):
 
         src = pkt_ethernet.src
         dst = pkt_ethernet.dst
+        self.logger.debug("src: %s, dst: %s\n", src, dst)
         self.mac_to_port[dpid][src] = in_port
         if dst in self.mac_to_port[dpid]:
             out_port = self.mac_to_port[dpid][dst]
@@ -151,11 +152,6 @@ class MyController(app_manager.RyuApp):
         match = parser.OFPMatch(eth_type=pkt_ethernet.ethertype, ip_proto=pkt_ip.proto, ipv4_src=ipv4_src, ipv4_dst=ipv4_dst, tcp_dst=tcp_dst)
         self.logger.info("inport: %s     ip: %s",in_port ,ipv4_src)
         out_port = self.mac_to_port[dpid][dst] # TODO: select the most secure access line
-        if dst == "00:00:00:00:01:01" or "00:00:00:00:01:02":
-            self.logger.info("default gate way")
-            out_port = 2
-            return
-        self.logger.info(out_port)
         actions = [parser.OFPActionOutput(out_port)]
         self.add_flow(datapath, 1, match, actions)
         out = parser.OFPPacketOut(datapath=datapath,
@@ -207,17 +203,17 @@ class MyController(app_manager.RyuApp):
         このハンドラーは、統計情報を更新し未遂論のフローがキューに残っていれば推論を行い、フローエントリーを更新します。
         """
         body = ev.msg.body
-        self.logger.info('datapath port '
-                        'rx-pkts rx-bytes rx-error '
-                        'tx-pkts tx-bytes tx-error')
-        self.logger.info('---------------- -------- '
-                        '-------- -------- -------- '
-                        '-------- -------- --------')
-        for stat in sorted(body, key=attrgetter('port_no')):
-            self.logger.info('%016x %8x %8d %8d %8d %8d %8d %8d',
-                    ev.msg.datapath.id, stat.port_no,
-                    stat.rx_packets, stat.rx_bytes, stat.rx_errors,
-                    stat.tx_packets, stat.tx_bytes, stat.tx_errors)
-    
+    #    self.logger.info('datapath port '
+    #                    'rx-pkts rx-bytes rx-error '
+    #                    'tx-pkts tx-bytes tx-error')
+    #    self.logger.info('---------------- -------- '
+    #                    '-------- -------- -------- '
+    #                    '-------- -------- --------')
+    #    for stat in sorted(body, key=attrgetter('port_no')):
+    #        self.logger.info('%016x %8x %8d %8d %8d %8d %8d %8d',
+    #                ev.msg.datapath.id, stat.port_no,
+    #                stat.rx_packets, stat.rx_bytes, stat.rx_errors,
+    #                stat.tx_packets, stat.tx_bytes, stat.tx_errors)
+    #
     def _access_line_calculator(self):
         return
