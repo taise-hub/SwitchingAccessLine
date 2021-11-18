@@ -80,7 +80,7 @@ class MyController(app_manager.RyuApp):
         
         pkt_ip = pkt.get_protocol(ipv4.ipv4)
         if pkt_ip is None:
-  #          self.logger.debug("ipv6 is not yet supported.")
+            # self.logger.debug("ipv6 is not yet supported.")
             return
         
         # tcp handling
@@ -93,7 +93,10 @@ class MyController(app_manager.RyuApp):
     def _handle_arp(self, in_port, pkt_ethernet, pkt_arp, message):
         if pkt_arp.opcode not in [arp.ARP_REQUEST, arp.ARP_REPLY]:
             return
-        self.logger.debug("this is ARP packet\n")
+        if pkt_arp.opcode == arp.ARP_REQUEST:
+            self.logger.debug("ARP REQUEST")
+        if pkt_arp.opcode == arp.ARP_REPLY:
+            self.logger.debug("ARP REPRLY")
         datapath = message.datapath
         dpid = datapath.id
         ofproto = datapath.ofproto
@@ -102,13 +105,27 @@ class MyController(app_manager.RyuApp):
         src = pkt_ethernet.src
         dst = pkt_ethernet.dst
         self.logger.debug("src: %s, dst: %s\n", src, dst)
+        self.logger.debug("ARP dst ip: %s\n", pkt_arp.dst_ip)
         self.mac_to_port[dpid][src] = in_port
         if dst in self.mac_to_port[dpid]:
             out_port = self.mac_to_port[dpid][dst]
         else:
             out_port = ofproto.OFPP_FLOOD
+        # =================================================================================================================
+        if pkt_arp.opcode == arp.ARP_REQUEST and (pkt_arp.dst_ip == "10.0.1.1" or pkt_arp.dst_ip == "10.0.2.1"):
+            out_port = 3 # access line 1
+            out_port = 4 # access line 2
+            out_port = 5 # access line 3
+            actions = [parser.OFPActionOutput(out_port)]
+            out = parser.OFPPacketOut(datapath=datapath,
+                                buffer_id=ofproto.OFP_NO_BUFFER,
+                                in_port=in_port, actions=actions,
+                                data=message.data)
+            datapath.send_msg(out)
+            return 
+        # =================================================================================================================
         self.logger.debug("table: %s\n", self.mac_to_port)
-            
+        
         actions = [parser.OFPActionOutput(out_port)]
         if out_port != ofproto.OFPP_FLOOD:
             match = parser.OFPMatch(in_port=in_port, arp_tha=dst)
@@ -150,7 +167,7 @@ class MyController(app_manager.RyuApp):
         ipv4_dst = pkt_ip.dst
         tcp_dst = pkt_tcp.dst_port
         match = parser.OFPMatch(eth_type=pkt_ethernet.ethertype, ip_proto=pkt_ip.proto, ipv4_src=ipv4_src, ipv4_dst=ipv4_dst, tcp_dst=tcp_dst)
-        self.logger.info("inport: %s     ip: %s",in_port ,ipv4_src)
+        self.logger.info("inport: %s     src_ip: %s    dst_ip: %s    tcp_dst: %s",in_port ,ipv4_src, ipv4_dst, tcp_dst)
         out_port = self.mac_to_port[dpid][dst] # TODO: select the most secure access line
         actions = [parser.OFPActionOutput(out_port)]
         self.add_flow(datapath, 1, match, actions)
