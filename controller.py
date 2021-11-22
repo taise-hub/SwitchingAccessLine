@@ -40,7 +40,7 @@ class MyController(app_manager.RyuApp):
     # add flow entry.
     def add_flow(self, datapath, priority, match, actions):
         """
-        フローを追加する関数です。
+        フローエントリーを追加する関数です。
         """
         ofproto = datapath.ofproto
         parser = datapath.ofproto_parser
@@ -112,6 +112,11 @@ class MyController(app_manager.RyuApp):
         else:
             out_port = ofproto.OFPP_FLOOD
         # =================================================================================================================
+        # ここでアクセス回線の制御を行う。
+        # 1. IPアドレスからロールを特定する。
+        # 2. 推論エンジンを用いて適切な回線を絞る。 → いらなくね？
+        # 3. TOPSISアルゴリズムを用いて、回線を選択
+        # 4. 優先度の低い
         if pkt_arp.opcode == arp.ARP_REQUEST and (pkt_arp.dst_ip == "10.0.1.1" or pkt_arp.dst_ip == "10.0.2.1"):
             out_port = 3 # access line 1
             out_port = 4 # access line 2
@@ -168,7 +173,7 @@ class MyController(app_manager.RyuApp):
         tcp_dst = pkt_tcp.dst_port
         match = parser.OFPMatch(eth_type=pkt_ethernet.ethertype, ip_proto=pkt_ip.proto, ipv4_src=ipv4_src, ipv4_dst=ipv4_dst, tcp_dst=tcp_dst)
         self.logger.info("inport: %s     src_ip: %s    dst_ip: %s    tcp_dst: %s",in_port ,ipv4_src, ipv4_dst, tcp_dst)
-        out_port = self.mac_to_port[dpid][dst] # TODO: select the most secure access line
+        out_port = self.mac_to_port[dpid][dst]
         actions = [parser.OFPActionOutput(out_port)]
         self.add_flow(datapath, 1, match, actions)
         out = parser.OFPPacketOut(datapath=datapath,
@@ -220,17 +225,16 @@ class MyController(app_manager.RyuApp):
         このハンドラーは、統計情報を更新し未遂論のフローがキューに残っていれば推論を行い、フローエントリーを更新します。
         """
         body = ev.msg.body
-    #    self.logger.info('datapath port '
-    #                    'rx-pkts rx-bytes rx-error '
-    #                    'tx-pkts tx-bytes tx-error')
-    #    self.logger.info('---------------- -------- '
-    #                    '-------- -------- -------- '
-    #                    '-------- -------- --------')
-    #    for stat in sorted(body, key=attrgetter('port_no')):
-    #        self.logger.info('%016x %8x %8d %8d %8d %8d %8d %8d',
-    #                ev.msg.datapath.id, stat.port_no,
-    #                stat.rx_packets, stat.rx_bytes, stat.rx_errors,
-    #                stat.tx_packets, stat.tx_bytes, stat.tx_errors)
-    #
+        self.logger.info('datapath ポート '
+                        '受信パケット数 受信バイト数 受信エラー数 '
+                        '送信パケット数 送信バイト数 送信エラー数')
+        self.logger.info('---------------- -------- '
+                        '-------- -------- -------- '
+                        '-------- -------- --------')
+        for stat in sorted(body, key=attrgetter('port_no')):
+            self.logger.info('%016x %8x %8d %8d %8d %8d %8d %8d',
+                    ev.msg.datapath.id, stat.port_no,
+                    stat.rx_packets, stat.rx_bytes, stat.rx_errors,
+                    stat.tx_packets, stat.tx_bytes, stat.tx_errors)
     def _access_line_calculator(self):
         return
