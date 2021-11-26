@@ -86,8 +86,8 @@ class MyController(app_manager.RyuApp):
         # tcp handling
         pkt_tcp = pkt.get_protocol(tcp.tcp)
         if pkt_tcp:
-            self._handle_tcp(in_port, pkt_eth, pkt_ip, pkt_tcp, msg)
             return
+            # self._handle_tcp(in_port, pkt_eth, pkt_ip, pkt_tcp, msg)
 
         # udp handling
         pkt_udp = pkt.get_protocol(udp.udp)
@@ -204,30 +204,21 @@ class MyController(app_manager.RyuApp):
         self.logger.info("ethernet_dst: %s     ethernet_src: %s", pkt_ethernet.dst, pkt_ethernet.src)
             # out_port = 3 : access line 1
             # out_port = 4 : access line 2
-            # out_port = 5 : access line 3
         self.logger.info("inport: %s     src_ip: %s    dst_ip: %s    udp_dst: %s",in_port ,ipv4_src, ipv4_dst, udp_dst)
         out_port = self.mac_to_port[dpid][dst]
-        # デフォルトゲートウェイとしてr2にパケットが送信されているため、r2宛のパケットをネットワークの外向きの通信として扱う。
-        # r2のMACアドレスは00:00:00:00:02:.. 
-        if pkt_ethernet.dst == '00:00:00:00:02:01' or pkt_ethernet.dst == '00:00:00:00:02:02':
-        # 回線選択のためにイーサネットパケットを新規に生成 =================
-            dst = '00:00:00:00:01:01'
-            e = ethernet.ethernet(dst=dst,
-                                  src=pkt_ethernet.src,
-                                  ethertype=0x0800)
-            p = packet.Packet()
-            p.add_protocol(e)
-            p.add_protocol(pkt_ip)
-            p.add_protocol(pkt_udp)
-            p.serialize()
-        # =========================================================
+        self.logger.info("outport: %s", out_port)
+
+        #============================================================
+        if pkt_ethernet.dst == '00:00:00:00:01:01':
+            out_port = 3
+        #============================================================
 
         actions = [parser.OFPActionOutput(out_port)]
         self.add_flow(datapath, 1, match, actions)
         out = parser.OFPPacketOut(datapath=datapath,
                         buffer_id=ofproto.OFP_NO_BUFFER,
                         in_port=in_port, actions=actions,
-                        data=p.data)
+                        data=message.data)
         datapath.send_msg(out)
         return
     
