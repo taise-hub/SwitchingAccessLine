@@ -221,12 +221,12 @@ class MyController(app_manager.RyuApp):
         # EthernetパケットのMACアドレスがDefault Gateway宛の場合、回線選択に入います。
         if pkt_ethernet.dst == '00:00:00:00:01:01':
             # ポート番号、宛先IPアドレスを用いてアプリケーションの推測を行います。
-            req = self.infer_app_request(ipv4_src, udp_dst)
+            req = self._infer_app_request(ipv4_dst, udp_dst)
             # 回線情報を用いて、回線1がアプリケーションAの要求を満たすかチェック行います。
             # アプリケーションAの要求を満たす場合、回線1(out_port=3)を利用し、満たさない場合、回線2(out_port=4)を利用します。
             out_port = 4 # 回線2
-            if self.is_meet_the_requirements(req):
-                out_port = 3
+            if self._is_meet_the_requirements(req):
+                out_port = 3 # 回線1
         #============================================================
 
         actions = [parser.OFPActionOutput(out_port)]
@@ -292,12 +292,12 @@ class MyController(app_manager.RyuApp):
                     stat.rx_packets, stat.rx_bytes, stat.rx_errors,
                     stat.tx_packets, stat.tx_bytes, stat.tx_errors)
     
-    def _infer_app_request(self, ipv4_src, udp_dst):
+    def _infer_app_request(self, ipv4_dst, udp_dst):
         """
         アプリケーションの推論を行い、そのアプリケーションの要求を提供します。
         仮実装として、宛先IPアドレスが10.0.2.10かつ、宛先ポートが5001(UDP)である、場合Trueを返します。
         """
-        if ipv4_src == "10.0.2.10" and udp_dst == 5001:
+        if ipv4_dst == "10.0.2.10" and udp_dst == 5001:
             return True
         return False
     def _is_meet_the_requirements(self, request):
