@@ -11,6 +11,7 @@ from ryu.lib.packet import arp
 from ryu.lib.packet import ipv4
 from ryu.lib.packet import icmp
 from ryu.lib.packet import tcp
+from ryu.lib.packet import udp
 
 from operator import attrgetter
 
@@ -88,6 +89,12 @@ class MyController(app_manager.RyuApp):
             self._handle_tcp(in_port, pkt_eth, pkt_ip, pkt_tcp, msg)
             return
 
+        # udp handling
+        pkt_udp = pkt.get_protocol(udp.udp)
+        if pkt_udp:
+            self._handle_udp(in_port, pkt_eth, pkt_ip, pkt_udp, msg)
+            return
+
     def _handle_arp(self, in_port, pkt_ethernet, pkt_arp, message):
         if pkt_arp.opcode not in [arp.ARP_REQUEST, arp.ARP_REPLY]:
             return
@@ -153,17 +160,15 @@ class MyController(app_manager.RyuApp):
         tcp_dst = pkt_tcp.dst_port
         match = parser.OFPMatch(eth_type=pkt_ethernet.ethertype, ip_proto=pkt_ip.proto, ipv4_src=ipv4_src, ipv4_dst=ipv4_dst, tcp_dst=tcp_dst)
         self.logger.info("ethernet_dst: %s     ethernet_src: %s",pkt_ethernet.dst, pkt_ethernet.src)
-        # ethernet_dst wo kakikaeru.
             # out_port = 3 : access line 1
             # out_port = 4 : access line 2
             # out_port = 5 : access line 3
         self.logger.info("inport: %s     src_ip: %s    dst_ip: %s    tcp_dst: %s",in_port ,ipv4_src, ipv4_dst, tcp_dst)
-
         out_port = self.mac_to_port[dpid][dst]
-        # R2gasentakusarerutame r2 no mac address wo riyousuru.
-        # r2 ateno pakettoha network no sotogawa nideru monoto site atukau
+        # デフォルトゲートウェイとしてr2にパケットが送信されているため、r2宛のパケットをネットワークの外向きの通信として扱う。
+        # r2のMACアドレスは00:00:00:00:02:.. 
         if pkt_ethernet.dst == '00:00:00:00:02:01' or pkt_ethernet.dst == '00:00:00:00:02:02':
-        # make new ethernet packet =================================
+        # 回線選択のためにイーサネットパケットを新規に生成 =================
             dst = '00:00:00:00:01:01'
             e = ethernet.ethernet(dst=dst,
                                   src=pkt_ethernet.src,
@@ -172,6 +177,48 @@ class MyController(app_manager.RyuApp):
             p.add_protocol(e)
             p.add_protocol(pkt_ip)
             p.add_protocol(pkt_tcp)
+            p.serialize()
+        # =========================================================
+
+        actions = [parser.OFPActionOutput(out_port)]
+        self.add_flow(datapath, 1, match, actions)
+        out = parser.OFPPacketOut(datapath=datapath,
+                        buffer_id=ofproto.OFP_NO_BUFFER,
+                        in_port=in_port, actions=actions,
+                        data=p.data)
+        datapath.send_msg(out)
+        return
+
+    def _handle_udp(self, in_port, pkt_ethernet, pkt_ip, pkt_udp, message):
+        self.logger.info("this is UDP packet\n")
+        datapath = message.datapath
+        dpid = datapath.id
+        ofproto = datapath.ofproto
+        parser = datapath.ofproto_parser
+
+        dst = pkt_ethernet.dst 
+        ipv4_src = pkt_ip.src
+        ipv4_dst = pkt_ip.dst
+        udp_dst = pkt_udp.dst_port
+        match = parser.OFPMatch(eth_type=pkt_ethernet.ethertype, ip_proto=pkt_ip.proto, ipv4_src=ipv4_src, ipv4_dst=ipv4_dst, udp_dst=udp_dst)
+        self.logger.info("ethernet_dst: %s     ethernet_src: %s", pkt_ethernet.dst, pkt_ethernet.src)
+            # out_port = 3 : access line 1
+            # out_port = 4 : access line 2
+            # out_port = 5 : access line 3
+        self.logger.info("inport: %s     src_ip: %s    dst_ip: %s    udp_dst: %s",in_port ,ipv4_src, ipv4_dst, udp_dst)
+        out_port = self.mac_to_port[dpid][dst]
+        # デフォルトゲートウェイとしてr2にパケットが送信されているため、r2宛のパケットをネットワークの外向きの通信として扱う。
+        # r2のMACアドレスは00:00:00:00:02:.. 
+        if pkt_ethernet.dst == '00:00:00:00:02:01' or pkt_ethernet.dst == '00:00:00:00:02:02':
+        # 回線選択のためにイーサネットパケットを新規に生成 =================
+            dst = '00:00:00:00:01:01'
+            e = ethernet.ethernet(dst=dst,
+                                  src=pkt_ethernet.src,
+                                  ethertype=0x0800)
+            p = packet.Packet()
+            p.add_protocol(e)
+            p.add_protocol(pkt_ip)
+            p.add_protocol(pkt_udp)
             p.serialize()
         # =========================================================
 
