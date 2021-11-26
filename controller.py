@@ -1,3 +1,4 @@
+#実験概要 https://hackmd.io/XoS8Y9jCQzKHe9KFebt55A?view
 
 from ryu.base import app_manager
 from ryu.controller import ofp_event
@@ -96,6 +97,10 @@ class MyController(app_manager.RyuApp):
             return
 
     def _handle_arp(self, in_port, pkt_ethernet, pkt_arp, message):
+        """
+        未知のARPフローを制御します。ARPリクエストとARPリプライに対応しています。
+        L2スイッチのように振る舞います。
+        """
         if pkt_arp.opcode not in [arp.ARP_REQUEST, arp.ARP_REPLY]:
             return
         if pkt_arp.opcode == arp.ARP_REQUEST:
@@ -129,6 +134,10 @@ class MyController(app_manager.RyuApp):
         datapath.send_msg(out)
         
     def _handle_icmp(self, in_port, pkt_ethernet, pkt_icmp, message):
+        """
+        未知のicmpパケットを制御します。
+        対応タイプ：ICMP ECHO REQUEST, ICMP ECHO REPLY
+        """
         if pkt_icmp.type not in [icmp.ICMP_ECHO_REQUEST, icmp.ICMP_ECHO_REPLY]:
             return
         self.logger.debug("this is ICMP packet\n")
@@ -209,8 +218,15 @@ class MyController(app_manager.RyuApp):
         self.logger.info("outport: %s", out_port)
 
         #============================================================
+        # EthernetパケットのMACアドレスがDefault Gateway宛の場合、回線選択に入います。
         if pkt_ethernet.dst == '00:00:00:00:01:01':
-            out_port = 3
+            # ポート番号、宛先IPアドレスを用いてアプリケーションの推測を行います。
+            req = self.infer_app_request(ipv4_src, udp_dst)
+            # 回線情報を用いて、回線1がアプリケーションAの要求を満たすかチェック行います。
+            # アプリケーションAの要求を満たす場合、回線1(out_port=3)を利用し、満たさない場合、回線2(out_port=4)を利用します。
+            out_port = 4 # 回線2
+            if self.is_meet_the_requirements(req):
+                out_port = 3
         #============================================================
 
         actions = [parser.OFPActionOutput(out_port)]
@@ -275,3 +291,18 @@ class MyController(app_manager.RyuApp):
                     ev.msg.datapath.id, stat.port_no,
                     stat.rx_packets, stat.rx_bytes, stat.rx_errors,
                     stat.tx_packets, stat.tx_bytes, stat.tx_errors)
+    
+    def _infer_app_request(self, ipv4_src, udp_dst):
+        """
+        アプリケーションの推論を行い、そのアプリケーションの要求を提供します。
+        仮実装として、宛先IPアドレスが10.0.2.10かつ、宛先ポートが5001(UDP)である、場合Trueを返します。
+        """
+        if ipv4_src == "10.0.2.10" and udp_dst == 5001:
+            return True
+        return False
+    def _is_meet_the_requirements(self, request):
+        """
+        デフォルトで利用している回線(回線1)がアプリケーションの要求を満たしているか確認します。
+        仮実装として、引数のrequest(bool)をそのまま返します。
+        """
+        return request
