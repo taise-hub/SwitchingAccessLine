@@ -1,4 +1,3 @@
-from operator import attrgetter
 
 from ryu.base import app_manager
 from ryu.controller import ofp_event
@@ -13,6 +12,8 @@ from ryu.lib.packet import ipv4
 from ryu.lib.packet import icmp
 from ryu.lib.packet import tcp
 
+from operator import attrgetter
+
 
 class MyController(app_manager.RyuApp):
     OFP_VERSIONS = [ofproto_v1_3.OFP_VERSION] #バージョン:OpenFlow 1.3
@@ -20,7 +21,6 @@ class MyController(app_manager.RyuApp):
     def __init__(self, *args, **kwargs):
         super(MyController, self).__init__(*args, **kwargs)
         self.mac_to_port = {}
-        self.non_inference_flows = {} #リアルタイムで流れているFlowのオブジェクトを格納 {dpid:[]}
         self.datapaths = {}
         self.monitor_thread = hub.spawn(self._monitor)
 
@@ -61,7 +61,6 @@ class MyController(app_manager.RyuApp):
         datapath = msg.datapath
         dpid = datapath.id
         self.mac_to_port.setdefault(dpid, {})
-        self.non_inference_flows.setdefault(dpid, [])
         pkt = packet.Packet(msg.data)
         pkt_eth = pkt.get_protocol(ethernet.ethernet)
         in_port = msg.match['in_port']
@@ -84,7 +83,6 @@ class MyController(app_manager.RyuApp):
             return
         
         # tcp handling
-        self.non_inference_flows[dpid].append(pkt)
         pkt_tcp = pkt.get_protocol(tcp.tcp)
         if pkt_tcp:
             self._handle_tcp(in_port, pkt_eth, pkt_ip, pkt_tcp, msg)
@@ -111,24 +109,6 @@ class MyController(app_manager.RyuApp):
             out_port = self.mac_to_port[dpid][dst]
         else:
             out_port = ofproto.OFPP_FLOOD
-        # =================================================================================================================
-        # ここでアクセス回線の制御を行う。
-        # 1. IPアドレスからロールを特定する。
-        # 2. 推論エンジンを用いて適切な回線を絞る。 → いらなくね？
-        # 3. TOPSISアルゴリズムを用いて、回線を選択
-        # 4. 優先度の低い
-        if pkt_arp.opcode == arp.ARP_REQUEST and (pkt_arp.dst_ip == "10.0.1.1" or pkt_arp.dst_ip == "10.0.2.1"):
-            out_port = 3 # access line 1
-            out_port = 4 # access line 2
-            out_port = 5 # access line 3
-            actions = [parser.OFPActionOutput(out_port)]
-            out = parser.OFPPacketOut(datapath=datapath,
-                                buffer_id=ofproto.OFP_NO_BUFFER,
-                                in_port=in_port, actions=actions,
-                                data=message.data)
-            datapath.send_msg(out)
-            return 
-        # =================================================================================================================
         self.logger.debug("table: %s\n", self.mac_to_port)
         
         actions = [parser.OFPActionOutput(out_port)]
@@ -172,14 +152,35 @@ class MyController(app_manager.RyuApp):
         ipv4_dst = pkt_ip.dst
         tcp_dst = pkt_tcp.dst_port
         match = parser.OFPMatch(eth_type=pkt_ethernet.ethertype, ip_proto=pkt_ip.proto, ipv4_src=ipv4_src, ipv4_dst=ipv4_dst, tcp_dst=tcp_dst)
+        self.logger.info("ethernet_dst: %s     ethernet_src: %s",pkt_ethernet.dst, pkt_ethernet.src)
+        # ethernet_dst wo kakikaeru.
+            # out_port = 3 : access line 1
+            # out_port = 4 : access line 2
+            # out_port = 5 : access line 3
         self.logger.info("inport: %s     src_ip: %s    dst_ip: %s    tcp_dst: %s",in_port ,ipv4_src, ipv4_dst, tcp_dst)
+
         out_port = self.mac_to_port[dpid][dst]
+        # R2gasentakusarerutame r2 no mac address wo riyousuru.
+        # r2 ateno pakettoha network no sotogawa nideru monoto site atukau
+        if pkt_ethernet.dst == '00:00:00:00:02:01' or pkt_ethernet.dst == '00:00:00:00:02:02':
+        # make new ethernet packet =================================
+            dst = '00:00:00:00:01:01'
+            e = ethernet.ethernet(dst=dst,
+                                  src=pkt_ethernet.src,
+                                  ethertype=0x0800)
+            p = packet.Packet()
+            p.add_protocol(e)
+            p.add_protocol(pkt_ip)
+            p.add_protocol(pkt_tcp)
+            p.serialize()
+        # =========================================================
+
         actions = [parser.OFPActionOutput(out_port)]
         self.add_flow(datapath, 1, match, actions)
         out = parser.OFPPacketOut(datapath=datapath,
                         buffer_id=ofproto.OFP_NO_BUFFER,
                         in_port=in_port, actions=actions,
-                        data=message.data)
+                        data=p.data)
         datapath.send_msg(out)
         return
     
@@ -225,16 +226,14 @@ class MyController(app_manager.RyuApp):
         このハンドラーは、統計情報を更新し未遂論のフローがキューに残っていれば推論を行い、フローエントリーを更新します。
         """
         body = ev.msg.body
-        self.logger.info('datapath ポート '
-                        '受信パケット数 受信バイト数 受信エラー数 '
+        self.logger.info('datapath         ポート   '
+                        '受信パケット数 受信バイト数 受信エラー数'
                         '送信パケット数 送信バイト数 送信エラー数')
         self.logger.info('---------------- -------- '
-                        '-------- -------- -------- '
-                        '-------- -------- --------')
-        for stat in sorted(body, key=attrgetter('port_no')):
+                        '-------------- ------------ ------------'
+                        '-------------- ------------ ------------')
+        for stat in sorted(body, key=attrgetter('port_no'))[2:]:
             self.logger.info('%016x %8x %8d %8d %8d %8d %8d %8d',
                     ev.msg.datapath.id, stat.port_no,
                     stat.rx_packets, stat.rx_bytes, stat.rx_errors,
                     stat.tx_packets, stat.tx_bytes, stat.tx_errors)
-    def _access_line_calculator(self):
-        return

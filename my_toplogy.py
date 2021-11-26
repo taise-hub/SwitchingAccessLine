@@ -1,9 +1,9 @@
 """Custom topology
-      h1 ---            ---router1---            ---h3
+      h1 ---               ---router1---            ---h3
               |            |           |            | 
-	      ---s1---|--router2--|---s2---
+	           ---s1---|--router2--|---s2---
 	      |    |       |           |     |      | 
-      h2 ---    |       ---router3---     |      ---h4 
+      h2 ---  |    |       ---router3---     |      ---h4 
          10.0.1.1/24                         10.0.2.1/24
 """
 from mininet.topo import Topo
@@ -26,7 +26,7 @@ def topology():
        
 	r1 = net.addHost('r1')
 	r2 = net.addHost('r2')
-	r3 = net.addHost('r3')
+	# r3 = net.addHost('r3')
 
 	c0 = net.addController('c0', controller=RemoteController, ip='127.0.0.1',port=6633, protocols="OpenFlow13")
 
@@ -36,10 +36,10 @@ def topology():
 	net.addLink(h4, s2)
 	net.addLink(s1, r1)
 	net.addLink(s1, r2)
-	net.addLink(s1, r3)
+	#net.addLink(s1, r3)
 	net.addLink(s2, r1)
 	net.addLink(s2, r2)
-	net.addLink(s2, r3)
+	#net.addLink(s2, r3)
 
 	net.build()
 	c0.start()
@@ -65,13 +65,13 @@ def topology():
 	r2.cmd('ip addr add 10.0.1.1/24 brd + dev r2-eth0')
 	r2.cmd('ip addr add 10.0.2.1/24 brd + dev r2-eth1')
 	r2.cmd('echo 1 > /proc/sys/net/ipv4/ip_forward')
-	r3.cmd('ifconfig r3-eth0 0')
-	r3.cmd('ifconfig r3-eth1 0')
-	r3.cmd('ifconfig r3-eth0 hw ether 00:00:00:00:03:01')
-	r3.cmd('ifconfig r3-eth1 hw ether 00:00:00:00:03:02')
-	r3.cmd('ip addr add 10.0.1.1/24 brd + dev r3-eth0')
-	r3.cmd('ip addr add 10.0.2.1/24 brd + dev r3-eth1')
-	r3.cmd('echo 1 > /proc/sys/net/ipv4/ip_forward')
+	#r3.cmd('ifconfig r3-eth0 0')
+	#r3.cmd('ifconfig r3-eth1 0')
+	#r3.cmd('ifconfig r3-eth0 hw ether 00:00:00:00:03:01')
+	#r3.cmd('ifconfig r3-eth1 hw ether 00:00:00:00:03:02')
+	#r3.cmd('ip addr add 10.0.1.1/24 brd + dev r3-eth0')
+	#r3.cmd('ip addr add 10.0.2.1/24 brd + dev r3-eth1')
+	#r3.cmd('echo 1 > /proc/sys/net/ipv4/ip_forward')
 
 	CLI(net)
 	net.stop()
