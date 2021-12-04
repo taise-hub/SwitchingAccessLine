@@ -17,6 +17,23 @@ from ryu.lib.packet import udp
 from operator import attrgetter
 
 
+class FlowStatusInfo():
+    port_no = None # 物理ポート
+    datapath = None 
+    rx_packets = None # 受信パケット数
+    rx_byets = None # 受信バイト数
+    tx_packets = None # 送信パケット数
+    tx_bytes = None # 送信バイト数
+
+class ApplicationRequest():
+    utilization_rate = None # 使用率
+    delay = None # 遅延
+    jitter = None #ジッタ
+    bandwitdh = None #帯域
+    cost = None #　コスト
+    security = None # セキュリティ
+    used_traffic = None #使用した通信量
+
 class MyController(app_manager.RyuApp):
     OFP_VERSIONS = [ofproto_v1_3.OFP_VERSION] #バージョン:OpenFlow 1.3
 
@@ -88,7 +105,6 @@ class MyController(app_manager.RyuApp):
         pkt_tcp = pkt.get_protocol(tcp.tcp)
         if pkt_tcp:
             return
-            # self._handle_tcp(in_port, pkt_eth, pkt_ip, pkt_tcp, msg)
 
         # udp handling
         pkt_udp = pkt.get_protocol(udp.udp)
@@ -153,48 +169,6 @@ class MyController(app_manager.RyuApp):
                         buffer_id=ofproto.OFP_NO_BUFFER,
                         in_port=in_port, actions=actions,
                         data=message.data)
-        datapath.send_msg(out)
-        return
-    
-    def _handle_tcp(self, in_port, pkt_ethernet, pkt_ip, pkt_tcp, message):
-        self.logger.info("this is TCP packet\n")
-        datapath = message.datapath
-        dpid = datapath.id
-        ofproto = datapath.ofproto
-        parser = datapath.ofproto_parser
-
-        dst = pkt_ethernet.dst 
-        ipv4_src = pkt_ip.src
-        ipv4_dst = pkt_ip.dst
-        tcp_dst = pkt_tcp.dst_port
-        match = parser.OFPMatch(eth_type=pkt_ethernet.ethertype, ip_proto=pkt_ip.proto, ipv4_src=ipv4_src, ipv4_dst=ipv4_dst, tcp_dst=tcp_dst)
-        self.logger.info("ethernet_dst: %s     ethernet_src: %s",pkt_ethernet.dst, pkt_ethernet.src)
-            # out_port = 3 : access line 1
-            # out_port = 4 : access line 2
-            # out_port = 5 : access line 3
-        self.logger.info("inport: %s     src_ip: %s    dst_ip: %s    tcp_dst: %s",in_port ,ipv4_src, ipv4_dst, tcp_dst)
-        out_port = self.mac_to_port[dpid][dst]
-        # デフォルトゲートウェイとしてr2にパケットが送信されているため、r2宛のパケットをネットワークの外向きの通信として扱う。
-        # r2のMACアドレスは00:00:00:00:02:.. 
-        if pkt_ethernet.dst == '00:00:00:00:02:01' or pkt_ethernet.dst == '00:00:00:00:02:02':
-        # 回線選択のためにイーサネットパケットを新規に生成 =================
-            dst = '00:00:00:00:01:01'
-            e = ethernet.ethernet(dst=dst,
-                                  src=pkt_ethernet.src,
-                                  ethertype=0x0800)
-            p = packet.Packet()
-            p.add_protocol(e)
-            p.add_protocol(pkt_ip)
-            p.add_protocol(pkt_tcp)
-            p.serialize()
-        # =========================================================
-
-        actions = [parser.OFPActionOutput(out_port)]
-        self.add_flow(datapath, 1, match, actions)
-        out = parser.OFPPacketOut(datapath=datapath,
-                        buffer_id=ofproto.OFP_NO_BUFFER,
-                        in_port=in_port, actions=actions,
-                        data=p.data)
         datapath.send_msg(out)
         return
 

@@ -97,6 +97,9 @@ def main(argv):
     topsis = Topsis()
     w = topsis.calc_request_weights()
     access_lines = np.array([
+        """
+        使用率, 遅延, 損失, ジッタ, 帯域, コスト, セキュリティ
+        """
         [10, 10, 10, 10, 15, 1, 10], # アクセス回線1 TODO:OpenFlowスイッチから取得
         [10, 10, 10, 10, 30, 3, 10], # アクセス回線2 TODO:OpenFlowスイッチから取得
         ])
