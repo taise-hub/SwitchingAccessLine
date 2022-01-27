@@ -1,5 +1,6 @@
 #実験概要 https://hackmd.io/XoS8Y9jCQzKHe9KFebt55A?view
-
+# accessline 1: port 3
+# accessline 2: port 4
 from ryu.base import app_manager
 from ryu.controller import ofp_event
 from ryu.controller.handler import CONFIG_DISPATCHER, MAIN_DISPATCHER, DEAD_DISPATCHER
@@ -15,6 +16,7 @@ from ryu.lib.packet import tcp
 from ryu.lib.packet import udp
 
 from operator import attrgetter
+import time
 
 
 class FlowStatusInfo():
@@ -25,20 +27,83 @@ class FlowStatusInfo():
     tx_packets = None # 送信パケット数
     tx_bytes = None # 送信バイト数
 
-class ApplicationRequest():
-    utilization_rate = None # 使用率
-    delay = None # 遅延
-    jitter = None #ジッタ
-    bandwitdh = None #帯域
-    cost = None #　コスト
-    security = None # セキュリティ
-    used_traffic = None #使用した通信量
+class AccessLine:
+    def __init__(self, delay:float, speed:float, loss:int, jitter:float):
+        self.delay  = delay
+        self.speed  = speed
+        self.loss   = loss
+        self.jitter = jitter
 
-class MyController(app_manager.RyuApp):
+class AccessLineAssessment:
+    def __init__(self, max_delay:float, min_speed:float, max_loss:int, max_jitter:int):
+        self.max_delay  = max_delay
+        self.min_speed  = min_speed
+        self.max_loss   = max_loss
+        self.max_jitter = max_jitter
+
+
+class Application:
+    def __init__(self, name:str, good:AccessLineAssessment, passing:AccessLineAssessment): 
+        self.name    = name
+        self.good    = good
+        self.passing = passing
+
+    def assess(self, line:AccessLine):
+        sum = 0
+        sum = sum + self._assess_delay(line.delay)
+        sum = sum + self._assess_speed(line.speed)
+        sum = sum + self._assess_loss(line.loss)
+        sum = sum + self._assess_jitter(line.jitter)
+        if sum >5:
+            return 2 # high
+        elif sum >3:
+            return 1 # middle
+        else:
+            return 0 # low
+
+    def _assess_delay(self, delay:float):
+        if self.good.max_delay >= delay:
+            return 2
+        elif self.passing.max_delay >= delay:
+            return 1
+        else:
+            return 0
+    def _assess_speed(self, speed:float):
+        if self.good.min_speed <= speed:
+            return 2
+        elif self.passing.min_speed <= speed:
+            return 1
+        else:
+            return 0
+    def _assess_loss(self, loss:float):
+        if self.good.max_loss >= loss:
+            return 2
+        elif self.passing.max_loss >= loss:
+            return 1
+        else:
+            return 0
+    def _assess_jitter(self, jitter:float):
+        if self.good.max_jitter >= jitter:
+            return 2
+        elif self.passing.max_jitter >= jitter:
+            return 1
+        else:
+            return 0
+
+#======================================================
+web_meet_good    = AccessLineAssessment(150, 3.0,  2, 40) # good 
+web_meet_passing = AccessLineAssessment(300, 2.5,  5, 80) # pass
+app_1 = Application("web_meet", web_meet_good, web_meet_passing)
+
+chat_good    = AccessLineAssessment(200, 1.0, 10,  500) # good
+chat_passing = AccessLineAssessment(200, 0.5, 15, 2000) # pass
+app_2 = Application("chat", chat_good, chat_passing)
+#=====================================================
+class Controller(app_manager.RyuApp):
     OFP_VERSIONS = [ofproto_v1_3.OFP_VERSION] #バージョン:OpenFlow 1.3
 
     def __init__(self, *args, **kwargs):
-        super(MyController, self).__init__(*args, **kwargs)
+        super(Controller, self).__init__(*args, **kwargs)
         self.mac_to_port = {}
         self.datapaths = {}
         self.monitor_thread = hub.spawn(self._monitor)
@@ -67,6 +132,16 @@ class MyController(app_manager.RyuApp):
                                              actions)] 
         mod = parser.OFPFlowMod(datapath=datapath, priority=priority,
                                 match=match, instructions=inst)
+        datapath.send_msg(mod)
+
+    def remove_flows(self, datapath, table_id):
+        """
+        Removing all flow entries.
+        """
+        ofproto = datapath.ofproto
+        parser = datapath.ofproto_parser
+        instructions = []
+        mod = parser.OFPFlowMod(datapath, 0, 0, table_id, ofproto.OFPFC_DELETE, 0, 0, 1, ofproto.OFPCML_NO_BUFFER, ofproto.OFPP_ANY, OFPG_ANY, 0, match, instructions)
         datapath.send_msg(mod)
 
     # packet in handler
@@ -130,14 +205,14 @@ class MyController(app_manager.RyuApp):
 
         src = pkt_ethernet.src
         dst = pkt_ethernet.dst
-        self.logger.debug("src: %s, dst: %s\n", src, dst)
-        self.logger.debug("ARP dst ip: %s\n", pkt_arp.dst_ip)
+        #self.logger.debug("src: %s, dst: %s\n", src, dst)
+        #self.logger.debug("ARP dst ip: %s\n", pkt_arp.dst_ip)
         self.mac_to_port[dpid][src] = in_port
         if dst in self.mac_to_port[dpid]:
             out_port = self.mac_to_port[dpid][dst]
         else:
             out_port = ofproto.OFPP_FLOOD
-        self.logger.debug("table: %s\n", self.mac_to_port)
+        #self.logger.debug("table: %s\n", self.mac_to_port)
         
         actions = [parser.OFPActionOutput(out_port)]
         if out_port != ofproto.OFPP_FLOOD:
@@ -156,7 +231,7 @@ class MyController(app_manager.RyuApp):
         """
         if pkt_icmp.type not in [icmp.ICMP_ECHO_REQUEST, icmp.ICMP_ECHO_REPLY]:
             return
-        self.logger.debug("this is ICMP packet\n")
+        #self.logger.debug("this is ICMP packet\n")
         datapath = message.datapath
         dpid = datapath.id
         ofproto = datapath.ofproto
@@ -173,7 +248,7 @@ class MyController(app_manager.RyuApp):
         return
 
     def _handle_udp(self, in_port, pkt_ethernet, pkt_ip, pkt_udp, message):
-        self.logger.info("this is UDP packet\n")
+        #self.logger.info("this is UDP packet\n")
         datapath = message.datapath
         dpid = datapath.id
         ofproto = datapath.ofproto
@@ -184,10 +259,10 @@ class MyController(app_manager.RyuApp):
         ipv4_dst = pkt_ip.dst
         udp_dst = pkt_udp.dst_port
         match = parser.OFPMatch(eth_type=pkt_ethernet.ethertype, ip_proto=pkt_ip.proto, ipv4_src=ipv4_src, ipv4_dst=ipv4_dst, udp_dst=udp_dst)
-        self.logger.info("ethernet_dst: %s     ethernet_src: %s", pkt_ethernet.dst, pkt_ethernet.src)
+        #self.logger.info("ethernet_dst: %s     ethernet_src: %s", pkt_ethernet.dst, pkt_ethernet.src)
             # out_port = 3 : access line 1
             # out_port = 4 : access line 2
-        self.logger.info("inport: %s     src_ip: %s    dst_ip: %s    udp_dst: %s",in_port ,ipv4_src, ipv4_dst, udp_dst)
+        #self.logger.info("inport: %s     src_ip: %s    dst_ip: %s    udp_dst: %s",in_port ,ipv4_src, ipv4_dst, udp_dst)
         out_port = self.mac_to_port[dpid][dst]
         self.logger.info("outport: %s", out_port)
 
@@ -198,9 +273,9 @@ class MyController(app_manager.RyuApp):
             req = self._infer_app_request(ipv4_dst, udp_dst)
             # 回線情報を用いて、回線1がアプリケーションAの要求を満たすかチェック行います。
             # アプリケーションAの要求を満たす場合、回線1(out_port=3)を利用し、満たさない場合、回線2(out_port=4)を利用します。
-            out_port = 4 # 回線2
-            if self._is_meet_the_requirements(req):
-                out_port = 3 # 回線1
+            # out_port = 3 # kaisenn 1
+            # out_port = 4 # 回線2
+            out_port = self._is_meet_the_requirements(req)
         #============================================================
 
         actions = [parser.OFPActionOutput(out_port)]
@@ -210,6 +285,20 @@ class MyController(app_manager.RyuApp):
                         in_port=in_port, actions=actions,
                         data=message.data)
         datapath.send_msg(out)
+        if ipv4_dst == "10.0.2.10" and out_port == 4:
+            time.sleep(5)
+            print("timeslept")
+            out_port = 3
+            actions = [parser.OFPActionOutput(out_port)]
+            self.add_flow(datapath, 1, match, actions)
+            out = parser.OFPPacketOut(datapath=datapath,
+                            buffer_id=ofproto.OFP_NO_BUFFER,
+                            in_port=in_port, actions=actions,
+                            data=message.data)
+            datapath_send_msg(out)
+        # self.remove_flows(datapath, 0)
+        # self.remove_flows(datapath, 1)
+
         return
     
     @set_ev_cls(ofp_event.EventOFPStateChange, [MAIN_DISPATCHER, DEAD_DISPATCHER])
@@ -220,11 +309,11 @@ class MyController(app_manager.RyuApp):
         datapath = ev.datapath
         if ev.state == MAIN_DISPATCHER:
             if datapath.id not in self.datapaths:
-                self.logger.debug('register datapath: %016x', datapath.id)
+                #self.logger.debug('register datapath: %016x', datapath.id)
                 self.datapaths[datapath.id] = datapath
         elif ev.state == DEAD_DISPATCHER:
             if datapath.id in self.datapaths:
-                self.logger.debug('unregister datapath: %016x', datapath.id)
+                #self.logger.debug('unregister datapath: %016x', datapath.id)
                 del self.datapaths[datapath.id]
 
     def _monitor(self):
@@ -234,13 +323,13 @@ class MyController(app_manager.RyuApp):
         while True:
             for dp in self.datapaths.values():
                 self._request_stats(dp)
-            hub.sleep(10)
+            hub.sleep(1)
     
     def _request_stats(self, datapath):
         """
         OFSに各ポートの統計情報をリクエストする関数です。
         """
-        self.logger.debug('send stats request: %016x', datapath.id)
+        #self.logger.debug('send stats request: %016x', datapath.id)
         ofproto = datapath.ofproto
         parser = datapath.ofproto_parser
         
@@ -265,15 +354,45 @@ class MyController(app_manager.RyuApp):
                     ev.msg.datapath.id, stat.port_no,
                     stat.rx_packets, stat.rx_bytes, stat.rx_errors,
                     stat.tx_packets, stat.tx_bytes, stat.tx_errors)
-    
+   
+    # TODO: implementation
     def _infer_app_request(self, ipv4_dst, udp_dst):
         """
         アプリケーションの推論を行い、そのアプリケーションの要求を提供します。
         仮実装として、宛先IPアドレスが10.0.2.10かつ、宛先ポートが5001(UDP)である、場合Trueを返します。
         """
+        line_1 = AccessLine(120, 2.5, 3, 70)
+        line_2 = AccessLine(100, 4.0, 1, 70)
+        
         if ipv4_dst == "10.0.2.10" and udp_dst == 5001:
-            return True
-        return False
+            app = app_1 # web_meet
+            assess_line1 = app.assess(line_1)
+            assess_line2 = app.assess(line_2)
+            print("line1: ", assess_line1)
+            print("line2: ", assess_line2)
+            # accessline 1: port 3
+            # accessline 2: port 4
+            # user youkyuutosite kaitekinakaisennworiyousuru.
+            if assess_line2 > assess_line1:
+                return 4
+            else:
+                return 3
+        if ipv4_dst == "10.0.2.20" and udp_dst == 5002:
+            app = app_2 # chat
+            assess_line1 = app.assess(line_1)
+            assess_line2 = app.assess(line_2)
+            print("line1: ", assess_line1)
+            print("line2: ", assess_line2)
+            # accessline 1: port 3
+            # accessline 2: port 4
+            # user youkyuutosite kaitekinakaisennworiyousuru.
+            if assess_line2 >= assess_line1:
+                return 4
+            else:
+                return 3
+
+            return 0 # not implementted
+
     def _is_meet_the_requirements(self, request):
         """
         デフォルトで利用している回線(回線1)がアプリケーションの要求を満たしているか確認します。

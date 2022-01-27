@@ -2,8 +2,7 @@
       h1 ---               ---router1---            ---h3
               |            |           |            | 
 	           ---s1---|--router2--|---s2---
-	      |    |       |           |     |      | 
-      h2 ---  |    |       ---router3---     |      ---h4 
+      h2 ---  |                                     |      ---h4 
          10.0.1.1/24                         10.0.2.1/24
 """
 from mininet.topo import Topo
