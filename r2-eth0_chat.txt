@@ -1,0 +1,5 @@
+01:12:05.589264 IP6 fe80::4033:14ff:fedb:a3d9.mdns > ff02::fb.mdns: 0 [2q] PTR (QM)? _ipps._tcp.local. PTR (QM)? _ipp._tcp.local. (45)
+01:13:09.590123 IP6 fe80::4033:14ff:fedb:a3d9.mdns > ff02::fb.mdns: 0 [2q] PTR (QM)? _ipps._tcp.local. PTR (QM)? _ipp._tcp.local. (45)
+01:15:17.591109 IP6 fe80::4033:14ff:fedb:a3d9.mdns > ff02::fb.mdns: 0 [2q] PTR (QM)? _ipps._tcp.local. PTR (QM)? _ipp._tcp.local. (45)
+01:21:08.018919 IP6 fe80::4033:14ff:fedb:a3d9.mdns > ff02::fb.mdns: 0 [2q] PTR (QM)? _ipps._tcp.local. PTR (QM)? _ipp._tcp.local. (45)
+

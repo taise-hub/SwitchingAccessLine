@@ -17,7 +17,9 @@ from ryu.lib.packet import udp
 
 from operator import attrgetter
 import time
+from threading import Timer  
 
+gmatch = 0
 
 class FlowStatusInfo():
     port_no = None # 物理ポート
@@ -180,6 +182,7 @@ class Controller(app_manager.RyuApp):
         # tcp handling
         pkt_tcp = pkt.get_protocol(tcp.tcp)
         if pkt_tcp:
+            self._handle_tcp(in_port, pkt_eth, pkt_ip, pkt_tcp, msg)
             return
 
         # udp handling
@@ -204,21 +207,19 @@ class Controller(app_manager.RyuApp):
         ofproto = datapath.ofproto
         parser = datapath.ofproto_parser
 
-        src = pkt_ethernet.src
-        dst = pkt_ethernet.dst
-        #self.logger.debug("src: %s, dst: %s\n", src, dst)
-        #self.logger.debug("ARP dst ip: %s\n", pkt_arp.dst_ip)
-        self.mac_to_port[dpid][src] = in_port
-        if dst in self.mac_to_port[dpid]:
-            out_port = self.mac_to_port[dpid][dst]
-        else:
-            out_port = ofproto.OFPP_FLOOD
-        #self.logger.debug("table: %s\n", self.mac_to_port)
-        
+        if in_port == 1 or in_port ==2:
+            out_port = 3
+        elif in_port ==3 and (pkt_arp.dst_ip=="10.0.0.3" or pkt_arp.dst_ip=="10.0.0.1"):
+            out_port = 1 
+        elif in_port ==3 and (pkt_arp.dst_ip=="10.0.0.4" or pkt_arp.dst_ip=="10.0.0.2"): 
+            out_port = 2
+        elif in_port ==4 and (pkt_arp.dst_ip=="10.0.0.3" or pkt_arp.dst_ip=="10.0.0.1"):
+            out_port = 1 
+        elif in_port ==4 and (pkt_arp.dst_ip=="10.0.0.4" or pkt_arp.dst_ip=="10.0.0.2"): 
+            out_port = 2
+        print(out_port)
         actions = [parser.OFPActionOutput(out_port)]
-        if out_port != ofproto.OFPP_FLOOD:
-            match = parser.OFPMatch(in_port=in_port, arp_tha=dst)
-            self.add_flow(datapath, 1, match, actions)
+        
         out = parser.OFPPacketOut(datapath=datapath,
                                 buffer_id=ofproto.OFP_NO_BUFFER,
                                 in_port=in_port, actions=actions,
@@ -232,7 +233,6 @@ class Controller(app_manager.RyuApp):
         """
         if pkt_icmp.type not in [icmp.ICMP_ECHO_REQUEST, icmp.ICMP_ECHO_REPLY]:
             return
-        #self.logger.debug("this is ICMP packet\n")
         datapath = message.datapath
         dpid = datapath.id
         ofproto = datapath.ofproto
@@ -248,8 +248,45 @@ class Controller(app_manager.RyuApp):
         datapath.send_msg(out)
         return
 
+    def _handle_tcp(self, in_port, pkt_ethernet, pkt_ip, pkt_tcp, message):
+        datapath = message.datapath
+        dpid = datapath.id
+        ofproto = datapath.ofproto
+        parser = datapath.ofproto_parser
+        
+        dst = pkt_ethernet.dst 
+        ipv4_src = pkt_ip.src
+        ipv4_dst = pkt_ip.dst
+        tcp_dst = pkt_tcp.dst_port
+        match = parser.OFPMatch(eth_type=pkt_ethernet.ethertype, ip_proto=pkt_ip.proto, ipv4_src=ipv4_src, ipv4_dst=ipv4_dst, tcp_dst=tcp_dst)
+        if in_port == 1:
+            out_port = 4 # self._infer_app_request(ipv4_dst, tcp_dst)
+        elif in_port ==3 or in_port == 4:
+            out_port = 1
+        if ipv4_dst == "10.0.0.3":
+            t1 = Timer(20.0, self._change_thread, [datapath, parser, match, 3, 10])
+            t1.start()
+            t2 = Timer(30.0, self._change_thread, [datapath, parser, match, 4, 20])
+            t2.start()
+            t3 = Timer(50.0, self._change_thread, [datapath, parser, match, 3, 30])
+            t3.start()
+            t4 = Timer(60.0, self._change_thread, [datapath, parser, match, 4, 40])
+            t4.start()
+        actions = [parser.OFPActionOutput(out_port)]
+        self.add_flow(datapath, 1, match, actions)
+        out = parser.OFPPacketOut(datapath=datapath,
+                        buffer_id=ofproto.OFP_NO_BUFFER,
+                        in_port=in_port, actions=actions,
+                        data=message.data)
+        datapath.send_msg(out)
+        return
+
+    def _change_thread(self, datapath, parser, match, out_port, priority):
+        actions = [parser.OFPActionOutput(out_port)]
+        self.add_flow(datapath, priority, match, actions)
+        return
+
     def _handle_udp(self, in_port, pkt_ethernet, pkt_ip, pkt_udp, message):
-        #self.logger.info("this is UDP packet\n")
         datapath = message.datapath
         dpid = datapath.id
         ofproto = datapath.ofproto
@@ -260,23 +297,10 @@ class Controller(app_manager.RyuApp):
         ipv4_dst = pkt_ip.dst
         udp_dst = pkt_udp.dst_port
         match = parser.OFPMatch(eth_type=pkt_ethernet.ethertype, ip_proto=pkt_ip.proto, ipv4_src=ipv4_src, ipv4_dst=ipv4_dst, udp_dst=udp_dst)
-            # out_port = 3 : access line 1
-            # out_port = 4 : access line 2
-        out_port = self.mac_to_port[dpid][dst]
-        self.logger.info("outport: %s", out_port)
-
-        #============================================================
-        # EthernetパケットのMACアドレスがDefault Gateway宛の場合、回線選択に入います。
-        if pkt_ethernet.dst == '00:00:00:00:01:01':
-            # ポート番号、宛先IPアドレスを用いてアプリケーションの推測を行います。
-            req = self._infer_app_request(ipv4_dst, udp_dst)
-            # 回線情報を用いて、回線1がアプリケーションAの要求を満たすかチェック行います。
-            # アプリケーションAの要求を満たす場合、回線1(out_port=3)を利用し、満たさない場合、回線2(out_port=4)を利用します。
-            # out_port = 3 # kaisenn 1
-            # out_port = 4 # 回線2
-            out_port = self._is_meet_the_requirements(req)
-        #============================================================
-
+        if in_port == 1: #  from host(h1 or h3)
+            out_port = self._infer_app_request(ipv4_dst, udp_dst)
+        elif in_port == 3 or in_port == 4: #from s3 or s4
+            out_port = 1 # TODO: change to h3(1) or h4(2)
         actions = [parser.OFPActionOutput(out_port)]
         self.add_flow(datapath, 1, match, actions)
         out = parser.OFPPacketOut(datapath=datapath,
@@ -284,10 +308,15 @@ class Controller(app_manager.RyuApp):
                         in_port=in_port, actions=actions,
                         data=message.data)
         datapath.send_msg(out)
-        if ipv4_dst == "10.0.2.10" and out_port == 4:
-            # 20byougoni 3nikaete sono10byougoni 4nimodosu wo kurikaesu
+        if ipv4_dst == "10.0.0.3" and out_port == 4:
             time.sleep(20)
-            print("AA")
+            out_port = 3
+            actions = [parser.OFPActionOutput(out_port)]
+            self.add_flow(datapath, 2, match, actions)
+            time.sleep(10)
+            self.remove_flows(datapath, 0, 100, match)
+        if ipv4_dst == "10.0.0.4" and out_port == 4:
+            time.sleep(20)
             out_port = 3
             actions = [parser.OFPActionOutput(out_port)]
             self.add_flow(datapath, 2, match, actions)
@@ -358,7 +387,7 @@ class Controller(app_manager.RyuApp):
         line_1 = AccessLine(120, 2.5, 3, 70)
         line_2 = AccessLine(100, 4.0, 1, 70)
         
-        if ipv4_dst == "10.0.2.10" and udp_dst == 5001:
+        if ipv4_dst == "10.0.0.3" and udp_dst == 5001:
             app = app_1 # web_meet
             assess_line1 = app.assess(line_1)
             assess_line2 = app.assess(line_2)
@@ -371,7 +400,7 @@ class Controller(app_manager.RyuApp):
                 return 4
             else:
                 return 3
-        if ipv4_dst == "10.0.2.20" and udp_dst == 5002:
+        if ipv4_dst == "10.0.0.4" and udp_dst == 5002:
             app = app_2 # chat
             assess_line1 = app.assess(line_1)
             assess_line2 = app.assess(line_2)
@@ -385,7 +414,7 @@ class Controller(app_manager.RyuApp):
             else:
                 return 4
 
-        return 0 # not implementted
+        return 4 # not implementted
 
     def _is_meet_the_requirements(self, request):
         """

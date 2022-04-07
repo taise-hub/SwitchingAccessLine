@@ -1,0 +1,6 @@
+# add flow entry to s3,s4 
+sh ovs-ofctl add-flow s3 in_port=2,actions=output:1
+sh ovs-ofctl add-flow s3 in_port=1,actions=output:2
+sh ovs-ofctl add-flow s4 in_port=2,actions=output:1
+sh ovs-ofctl add-flow s4 in_port=1,actions=output:2
+

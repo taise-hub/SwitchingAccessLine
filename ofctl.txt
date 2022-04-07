@@ -1,0 +1,5 @@
+sh ovs-ofctl add-flow s3 in_port=1,action=output:2
+sh ovs-ofctl add-flow s3 in_port=2,action=output:1
+sh ovs-ofctl add-flow s4 in_port=1,action=output:2
+sh ovs-ofctl add-flow s4 in_port=2,action=output:1
+sh ovs-ofctl add-flow s2 action=normal
